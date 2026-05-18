@@ -22,15 +22,14 @@ export const SERVICE_PRESETS: Record<string, ServicePreset> = {
   deepseek:    { providerFamily: "openai",    api: "openai-completions", baseUrl: "https://api.deepseek.com",                           label: "DeepSeek",        temperatureRange: [0, 2], defaultTemperature: 1.0, writingTemperature: 1.5, temperatureHint: "创意写作推荐 1.5" },
   moonshot:    { providerFamily: "openai",    api: "openai-completions", baseUrl: "https://api.moonshot.cn/v1",                         label: "Moonshot (Kimi)", temperatureRange: [0, 1], defaultTemperature: 0.3, writingTemperature: 1.0, temperatureHint: "kimi-k2.5 推荐 temperature=1.0" },
   minimax:     {
-    providerFamily: "anthropic",
-    api: "anthropic-messages",
-    baseUrl: "https://api.minimaxi.com/anthropic",
+    providerFamily: "openai",
+    api: "openai-completions",
+    baseUrl: "https://api.minimaxi.com/v1",
     label: "MiniMax",
     temperatureRange: [0, 2],
     defaultTemperature: 0.9,
     writingTemperature: 0.9,
     knownModels: ["MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M2.5", "MiniMax-M2.5-highspeed", "MiniMax-M2.1", "MiniMax-M2.1-highspeed", "MiniMax-M2"],
-    piProvider: "anthropic",
   },
   bailian:     {
     providerFamily: "anthropic",

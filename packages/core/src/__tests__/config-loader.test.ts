@@ -146,8 +146,8 @@ describe("loadProjectConfig local provider auth", () => {
     const config = await loadProjectConfig(root);
 
     expect(config.llm.service).toBe("minimax");
-    expect(config.llm.provider).toBe("anthropic");
-    expect(config.llm.baseUrl).toBe("https://api.minimaxi.com/anthropic");
+    expect(config.llm.provider).toBe("openai");
+    expect(config.llm.baseUrl).toBe("https://api.minimaxi.com/v1");
     expect(config.llm.model).toBe("MiniMax-M2.7");
     expect(config.llm.apiKey).toBe("sk-minimax");
   });

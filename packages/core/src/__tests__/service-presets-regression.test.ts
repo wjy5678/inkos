@@ -19,15 +19,16 @@ describe("service-presets regression", () => {
   });
 
   describe("MiniMax preset", () => {
-    it("has correct domestic MiniMax baseUrl (api.minimaxi.com/anthropic)", () => {
+    it("has correct domestic MiniMax OpenAI-compatible baseUrl", () => {
       const preset = resolveServicePreset("minimax");
       expect(preset).toBeDefined();
-      expect(preset!.baseUrl).toBe("https://api.minimaxi.com/anthropic");
+      expect(preset!.baseUrl).toBe("https://api.minimaxi.com/v1");
     });
 
-    it("uses anthropic-messages api format", () => {
+    it("uses openai-completions api format", () => {
       const preset = resolveServicePreset("minimax");
-      expect(preset!.api).toBe("anthropic-messages");
+      expect(preset!.providerFamily).toBe("openai");
+      expect(preset!.api).toBe("openai-completions");
     });
 
     it("has knownModels with all 7 MiniMax models", () => {

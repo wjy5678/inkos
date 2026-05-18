@@ -85,9 +85,9 @@ describe("providers structural integrity", () => {
     expect(getEndpoint("bailian")?.baseUrl).toContain("/anthropic");
   });
 
-  it("B1：minimax 保留 anthropic-messages api（例外）", () => {
-    expect(getEndpoint("minimax")?.api).toBe("anthropic-messages");
-    expect(getEndpoint("minimax")?.baseUrl).toContain("/anthropic");
+  it("B1：minimax 使用 OpenAI-compatible chat endpoint", () => {
+    expect(getEndpoint("minimax")?.api).toBe("openai-completions");
+    expect(getEndpoint("minimax")?.baseUrl).toBe("https://api.minimaxi.com/v1");
   });
 
   it("B2：中国原厂批次 2 全部收录（6 个）", () => {
@@ -140,13 +140,14 @@ describe("providers structural integrity", () => {
     expect(getAllEndpoints().length).toBe(38);
   });
 
-  it("B6：CodingPlan provider 都走 anthropic-messages", () => {
+  it("B6：CodingPlan provider 除 MiniMax 外都走 anthropic-messages", () => {
     for (const id of [
       "kimiCodingPlan", "minimaxCodingPlan", "bailianCodingPlan",
       "glmCodingPlan", "volcengineCodingPlan", "opencodeCodingPlan",
       "astronCodingPlan", "kimicode",
     ]) {
-      expect(getEndpoint(id)?.api).toBe("anthropic-messages");
+      const expected = id === "minimaxCodingPlan" ? "openai-completions" : "anthropic-messages";
+      expect(getEndpoint(id)?.api).toBe(expected);
     }
   });
 

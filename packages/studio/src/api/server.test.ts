@@ -44,7 +44,7 @@ type ServicePresetMock = {
 const SERVICE_PRESETS_MOCK: Record<string, ServicePresetMock> = {
   openai: { providerFamily: "openai", baseUrl: "https://api.openai.com/v1", modelsBaseUrl: "https://api.openai.com/v1", knownModels: [] as string[] },
   anthropic: { providerFamily: "anthropic", baseUrl: "https://api.anthropic.com", modelsBaseUrl: "https://api.anthropic.com", knownModels: [] as string[] },
-  minimax: { providerFamily: "anthropic", baseUrl: "https://api.minimaxi.com/anthropic", modelsBaseUrl: "https://api.minimaxi.com/anthropic", knownModels: [] as string[] },
+  minimax: { providerFamily: "openai", baseUrl: "https://api.minimaxi.com/v1", modelsBaseUrl: "https://api.minimaxi.com/v1", knownModels: [] as string[] },
   bailian: { providerFamily: "anthropic", baseUrl: "https://dashscope.aliyuncs.com/apps/anthropic", modelsBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", knownModels: [] as string[] },
   google: { providerFamily: "openai", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", modelsBaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", knownModels: [] as string[] },
   kkaiapi: { providerFamily: "openai", baseUrl: "https://api.kkaiapi.com/v1", modelsBaseUrl: "https://api.kkaiapi.com/v1", knownModels: [] as string[] },
@@ -1395,7 +1395,7 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(chatCompletionMock).not.toHaveBeenCalled();
   });
 
-  it("uses the MiniMax preset provider family during service probe", async () => {
+  it("uses the MiniMax OpenAI-compatible preset during service probe", async () => {
     await writeFile(join(root, "inkos.json"), JSON.stringify({
       ...projectConfig,
       llm: {
@@ -1414,7 +1414,7 @@ describe("createStudioServer daemon lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock as typeof fetch);
     createLLMClientMock.mockImplementation(((cfg: unknown) => cfg) as any);
     chatCompletionMock.mockImplementation(async (client: any, model: string) => {
-      if (client.provider === "anthropic" && client.baseUrl === "https://api.minimaxi.com/anthropic" && model === "MiniMax-M2.7") {
+      if (client.provider === "openai" && client.baseUrl === "https://api.minimaxi.com/v1" && model === "MiniMax-M2.7") {
         return {
           content: "pong",
           usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
@@ -1443,7 +1443,7 @@ describe("createStudioServer daemon lifecycle", () => {
       detected: {
         apiFormat: "chat",
         stream: false,
-        baseUrl: "https://api.minimaxi.com/anthropic",
+        baseUrl: "https://api.minimaxi.com/v1",
       },
     });
   });

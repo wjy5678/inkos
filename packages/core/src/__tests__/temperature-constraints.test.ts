@@ -36,7 +36,7 @@ describe("temperature constraints per service", () => {
     expect(preset?.temperatureRange).toEqual([0, 2]);
   });
 
-  it("minimax has range [0, 1] (R2-6: MiniMax Anthropic compat 官方上限 1)", () => {
+  it("minimax has range [0, 1]", () => {
     const preset = resolveServicePreset("minimax");
     expect(preset?.temperatureRange).toEqual([0, 1]);
   });

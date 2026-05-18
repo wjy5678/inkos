@@ -41,6 +41,7 @@ export async function resolveServiceModel(
     ? (customApiFormat === "responses" ? "openai-responses" : "openai-completions")
     : (preset?.api ?? "openai-completions");
   const configuredBaseUrl = customBaseUrl ?? preset?.baseUrl ?? "";
+  const endpointModel = endpoint?.models.find((model) => model.id === modelId || model.deploymentName === modelId);
 
   // Get pi-ai Model — may return undefined for model IDs not in the built-in registry
   const piModel = getModel(piProvider as any, modelId as any) as Model<Api> | undefined;
@@ -73,8 +74,8 @@ export async function resolveServiceModel(
     reasoning: piModel?.reasoning ?? false,
     input: piModel?.input ?? ["text"] as ("text" | "image")[],
     cost: piModel?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: piModel?.contextWindow ?? 0,
-    maxTokens: piModel?.maxTokens ?? 16384,
+    contextWindow: endpointModel?.contextWindowTokens ?? piModel?.contextWindow ?? 0,
+    maxTokens: endpointModel?.maxOutput ?? piModel?.maxTokens ?? 16384,
     ...(compat ? { compat: compat as Model<Api>["compat"] } : {}),
   };
 

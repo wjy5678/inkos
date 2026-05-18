@@ -3,17 +3,17 @@ import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-// Simulate pi-ai returning a MiniMax model with WRONG baseUrl (international anthropic endpoint)
-// Our resolveServiceModel should override this with the preset baseUrl
+// Simulate pi-ai returning MiniMax's stale Anthropic-compatible route.
+// Our resolveServiceModel should override it with the current OpenAI-compatible preset.
 vi.mock("@mariozechner/pi-ai", () => ({
   getModel: vi.fn((provider: string, modelId: string) => {
     if (modelId === "MiniMax-M2.7") {
       return {
         id: "MiniMax-M2.7",
         name: "MiniMax-M2.7",
-        api: "anthropic-messages",        // pi-ai uses anthropic format
+        api: "anthropic-messages",        // stale pi-ai metadata
         provider: "minimax",
-        baseUrl: "https://api.minimax.io/anthropic",  // pi-ai uses international endpoint
+        baseUrl: "https://api.minimax.io/anthropic",
         reasoning: true,
         input: ["text"],
         cost: { input: 0.3, output: 1.2, cacheRead: 0.06, cacheWrite: 0.375 },
@@ -47,15 +47,13 @@ describe("resolveServiceModel regression — preset baseUrl override", () => {
   it("uses preset baseUrl, not pi-ai built-in baseUrl", async () => {
     const result = await resolveServiceModel("minimax", "MiniMax-M2.7", root);
 
-    // Must use our preset (api.minimaxi.com/anthropic), NOT pi-ai's (api.minimax.io/anthropic)
-    expect(result.model.baseUrl).toBe("https://api.minimaxi.com/anthropic");
+    expect(result.model.baseUrl).toBe("https://api.minimaxi.com/v1");
   });
 
   it("uses preset api format, not pi-ai built-in api format", async () => {
     const result = await resolveServiceModel("minimax", "MiniMax-M2.7", root);
 
-    // Must use our preset semantics instead of pi-ai's built-in minimax route.
-    expect(result.model.api).toBe("anthropic-messages");
+    expect(result.model.api).toBe("openai-completions");
   });
 
   it("inherits metadata from pi-ai (reasoning, cost, contextWindow)", async () => {
