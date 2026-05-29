@@ -1,3 +1,5 @@
+import type { SessionKind } from "@actalk/inkos-core";
+
 // -- Data types --
 
 export interface ToolCall {
@@ -61,6 +63,7 @@ export interface SessionMessage {
 export interface SessionSummary {
   readonly sessionId: string;
   readonly bookId: string | null;
+  readonly sessionKind?: ChatSessionKind;
   readonly title: string | null;
   readonly messageCount: number;
   readonly createdAt: number;
@@ -77,6 +80,7 @@ export interface AgentResponse {
   readonly session?: {
     readonly sessionId?: string;
     readonly bookId?: string | null;
+    readonly sessionKind?: ChatSessionKind;
     readonly title?: string | null;
     readonly activeBookId?: string;
     readonly creationDraft?: unknown;
@@ -89,6 +93,7 @@ export interface SessionResponse {
   readonly session?: {
     readonly sessionId?: string;
     readonly bookId?: string | null;
+    readonly sessionKind?: ChatSessionKind;
     readonly title?: string | null;
     readonly activeBookId?: string;
     readonly messages?: ReadonlyArray<SessionMessage>;
@@ -104,9 +109,28 @@ export interface BookSummary {
   cast: string;
 }
 
+export type ChatSessionKind = SessionKind;
+export type ChatActionSource = "free-text" | "button" | "slash" | "quick-action";
+export type ChatRequestedIntent =
+  | "create_book"
+  | "write_next"
+  | "short_run"
+  | "play_start"
+  | "play_step"
+  | "generate_cover"
+  | "edit_artifact";
+
+export interface SendMessageOptions {
+  readonly activeBookId?: string;
+  readonly sessionKind?: ChatSessionKind;
+  readonly actionSource?: ChatActionSource;
+  readonly requestedIntent?: ChatRequestedIntent;
+}
+
 export interface SessionRuntime {
   readonly sessionId: string;
   readonly bookId: string | null;
+  readonly sessionKind?: ChatSessionKind;
   readonly title: string | null;
   readonly messages: ReadonlyArray<Message>;
   readonly stream: EventSource | null;
@@ -147,12 +171,12 @@ export interface MessageActions {
   addErrorMessage: (sessionId: string, errorMsg: string) => void;
   loadSessionMessages: (sessionId: string, msgs: ReadonlyArray<SessionMessage>) => void;
   loadSessionList: (bookId: string | null) => Promise<ReadonlyArray<SessionSummary>>;
-  createSession: (bookId: string | null) => Promise<string>;
-  createDraftSession: (bookId: string | null) => string;
+  createSession: (bookId: string | null, sessionKind?: ChatSessionKind) => Promise<string>;
+  createDraftSession: (bookId: string | null, sessionKind?: ChatSessionKind) => string;
   renameSession: (sessionId: string, title: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
   loadSessionDetail: (sessionId: string) => Promise<void>;
-  sendMessage: (sessionId: string, text: string, activeBookId?: string) => Promise<void>;
+  sendMessage: (sessionId: string, text: string, options?: SendMessageOptions) => Promise<void>;
   setSelectedModel: (model: string, service: string) => void;
 }
 

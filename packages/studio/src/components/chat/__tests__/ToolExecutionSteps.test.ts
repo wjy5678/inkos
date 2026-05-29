@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ToolExecution } from "../../../store/chat/types";
-import { getGeneratedArtifactDetails, getPlayToolDetails, groupToolExecutionsChronologically } from "../ToolExecutionSteps";
+import { getGeneratedArtifactDetails, getPlayToolDetails, getProposedActionDetails, groupToolExecutionsChronologically } from "../ToolExecutionSteps";
 
 const makeExec = (overrides: Partial<ToolExecution> & { id: string; tool: string }): ToolExecution => ({
   label: "test",
@@ -105,6 +105,20 @@ describe("groupChronologically", () => {
     expect(groups[2].type === "pipeline" ? groups[2].exec.tool : "").toBe("play_step");
   });
 
+  it("renders proposed actions as visible pipeline cards", () => {
+    const execs: ToolExecution[] = [
+      makeExec({ id: "1", tool: "read", label: "读取文件" }),
+      makeExec({ id: "2", tool: "propose_action", label: "确认动作" }),
+      makeExec({ id: "3", tool: "grep", label: "搜索" }),
+    ];
+
+    const groups = groupToolExecutionsChronologically(execs);
+
+    expect(groups).toHaveLength(3);
+    expect(groups.map((group) => group.type)).toEqual(["utilities", "pipeline", "utilities"]);
+    expect(groups[1].type === "pipeline" ? groups[1].exec.tool : "").toBe("propose_action");
+  });
+
   it("extracts generated cover details from public short fiction tools", () => {
     const exec = makeExec({
       id: "short-1",
@@ -150,6 +164,30 @@ describe("groupChronologically", () => {
       runId: "main",
       sceneText: "你翻开账本，发现一张旧船票。",
       suggestedActions: ["藏起船票", "追问来人"],
+    });
+  });
+
+  it("extracts proposed action details", () => {
+    const exec = makeExec({
+      id: "proposal-1",
+      tool: "propose_action",
+      label: "确认动作",
+      details: {
+        kind: "proposed_action",
+        action: "short_run",
+        targetSessionKind: "short",
+        title: "生成短篇",
+        summary: "确认后生成完整短篇。",
+        instruction: "写一篇婚姻反杀短篇",
+      },
+    });
+
+    expect(getProposedActionDetails(exec)).toMatchObject({
+      kind: "proposed_action",
+      action: "short_run",
+      targetSessionKind: "short",
+      title: "生成短篇",
+      instruction: "写一篇婚姻反杀短篇",
     });
   });
 });

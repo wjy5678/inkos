@@ -90,7 +90,81 @@ async function latestPlayTarget(
 }
 
 // ---------------------------------------------------------------------------
-// 1. SubAgentTool (sub_agent)
+// 1. Proposed Action Tool (propose_action)
+// ---------------------------------------------------------------------------
+
+const ProposeActionParams = Type.Object({
+  action: Type.Union([
+    Type.Literal("create_book"),
+    Type.Literal("short_run"),
+    Type.Literal("play_start"),
+    Type.Literal("generate_cover"),
+  ], {
+    description: "The production action the user appears to want, but which needs explicit confirmation from general chat.",
+  }),
+  instruction: Type.String({
+    description: "The exact production instruction to run after the user confirms. It must be self-contained: include title, story direction, active target, output directory, cover visual direction, or any referenced context that would otherwise be lost when switching sessions.",
+  }),
+  title: Type.Optional(Type.String({
+    description: "Short user-facing title for the confirmation card.",
+  })),
+  summary: Type.Optional(Type.String({
+    description: "One or two sentences explaining what will happen if the user confirms.",
+  })),
+});
+
+type ProposeActionParamsType = Static<typeof ProposeActionParams>;
+
+function proposedActionSessionKind(action: ProposeActionParamsType["action"]): "book-create" | "short" | "play" {
+  if (action === "create_book") return "book-create";
+  if (action === "play_start") return "play";
+  return "short";
+}
+
+export function createProposeActionTool(language: "zh" | "en" = "zh"): AgentTool<typeof ProposeActionParams> {
+  return {
+    name: "propose_action",
+    description:
+      "Ask the user to confirm a production action from general chat. " +
+      "Use this instead of directly creating books, generating shorts/covers, or starting play worlds in chat mode.",
+    label: "Confirm Action",
+    parameters: ProposeActionParams,
+    async execute(_toolCallId: string, params: ProposeActionParamsType): Promise<AgentToolResult<unknown>> {
+      const targetSessionKind = proposedActionSessionKind(params.action);
+      const isZh = language === "zh";
+      const title = params.title?.trim() || (
+        params.action === "create_book" ? (isZh ? "创建长篇书籍" : "Create a long-form book")
+          : params.action === "short_run" ? (isZh ? "生成 InkOS Short" : "Generate InkOS Short")
+            : params.action === "play_start" ? (isZh ? "启动 InkOS Play" : "Start InkOS Play")
+              : (isZh ? "生成封面" : "Generate cover")
+      );
+      const summary = params.summary?.trim() || (
+        isZh
+          ? "确认后会切换到对应入口并执行这条需求。"
+          : "After confirmation, InkOS will switch to the matching surface and run this request."
+      );
+      return textResult(
+        [
+          title,
+          summary,
+          "",
+          `Instruction: ${params.instruction}`,
+        ].join("\n"),
+        {
+          kind: "proposed_action",
+          action: params.action,
+          targetSessionKind,
+          title,
+          summary,
+          instruction: params.instruction,
+        },
+      );
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 2. SubAgentTool (sub_agent)
 // ---------------------------------------------------------------------------
 
 const SubAgentParams = Type.Object({

@@ -6,7 +6,7 @@ import {
   type InteractionMessage,
   type ToolExecution,
 } from "./session.js";
-import type { MessageEvent, TranscriptEvent } from "./session-transcript-schema.js";
+import type { MessageEvent, SessionKind, TranscriptEvent } from "./session-transcript-schema.js";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object";
@@ -338,10 +338,20 @@ export function adaptRestoredAgentMessagesForModel(
     : filtered;
 }
 
-export function committedMessageEvents(events: TranscriptEvent[]): MessageEvent[] {
+export function committedMessageEvents(events: TranscriptEvent[], sessionKind?: SessionKind): MessageEvent[] {
+  const requestKinds = new Map(
+    events
+      .filter((event) => event.type === "request_started")
+      .map((event) => [event.requestId, event.sessionKind]),
+  );
   const committed = new Set(
     events
       .filter((event) => event.type === "request_committed")
+      .filter((event) => {
+        if (!sessionKind) return true;
+        const kind = requestKinds.get(event.requestId);
+        return kind === undefined || kind === sessionKind;
+      })
       .map((event) => event.requestId),
   );
 
@@ -353,10 +363,11 @@ export function committedMessageEvents(events: TranscriptEvent[]): MessageEvent[
 export async function restoreAgentMessagesFromTranscript(
   projectRoot: string,
   sessionId: string,
+  sessionKind?: SessionKind,
 ): Promise<AgentMessage[]> {
   const events = await readTranscriptEvents(projectRoot, sessionId);
   return cleanRestoredAgentMessages(
-    committedMessageEvents(events).map((event) => event.message as AgentMessage),
+    committedMessageEvents(events, sessionKind).map((event) => event.message as AgentMessage),
   );
 }
 
@@ -460,6 +471,7 @@ function messageEventsToInteractionMessages(events: MessageEvent[]): Interaction
     edit: "编辑文件",
     grep: "搜索",
     ls: "列目录",
+    propose_action: "确认动作",
     short_fiction_run: "短篇生产",
     generate_cover: "生成封面",
   };
@@ -595,6 +607,7 @@ export async function deriveBookSessionFromTranscript(
 
   const created = events.find((event) => event.type === "session_created");
   let bookId = created?.type === "session_created" ? created.bookId : null;
+  let sessionKind = created?.type === "session_created" ? created.sessionKind : undefined;
   let title = created?.type === "session_created" ? created.title : null;
   const createdAt = created?.type === "session_created"
     ? created.createdAt
@@ -613,6 +626,7 @@ export async function deriveBookSessionFromTranscript(
   for (const event of events) {
     if (event.type !== "session_metadata_updated") continue;
     if ("bookId" in event && event.bookId !== undefined) bookId = event.bookId;
+    if ("sessionKind" in event && event.sessionKind !== undefined) sessionKind = event.sessionKind;
     if ("title" in event && event.title !== undefined) title = event.title;
     updatedAt = Math.max(updatedAt, event.updatedAt);
   }
@@ -626,6 +640,7 @@ export async function deriveBookSessionFromTranscript(
   return BookSessionSchema.parse({
     sessionId,
     bookId,
+    sessionKind,
     title,
     messages,
     draftRounds: [],

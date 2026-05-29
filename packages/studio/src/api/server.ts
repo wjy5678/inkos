@@ -45,11 +45,13 @@ import {
   Scheduler,
   coverSecretKey,
   resolveCoverProviderPreset,
+  SessionKindSchema,
   type ResolvedModel,
   type PipelineConfig,
   type ProjectConfig,
   type LogSink,
   type LogEntry,
+  type SessionKind,
 } from "@actalk/inkos-core";
 import { access, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -82,6 +84,7 @@ const AGENT_LABELS: Record<string, string> = {
 };
 const TOOL_LABELS: Record<string, string> = {
   read: "读取文件", edit: "编辑文件", grep: "搜索", ls: "列目录",
+  propose_action: "确认动作",
   short_fiction_run: "短篇生产",
   generate_cover: "生成封面",
   play_start: "启动互动世界",
@@ -237,10 +240,80 @@ function hasSuccessfulSubAgentExec(
   );
 }
 
+function hasSuccessfulToolExec(
+  execs: ReadonlyArray<CollectedToolExec>,
+  tool: string,
+): boolean {
+  return execs.some((exec) =>
+    exec.tool === tool
+    && exec.status === "completed"
+    && !isLikelyFailedToolResult(exec)
+  );
+}
+
 function isWriteNextInstruction(instruction: string): boolean {
   const trimmed = instruction.trim();
-  return /^(continue|继续|继续写|写下一章|write next|下一章|再来一章)$/i.test(trimmed)
-    || /(继续写|写下一章|下一章|再来一章|write\s+next)/i.test(trimmed);
+  return /^(continue|继续|继续写|写下一章|write next|下一章|再来一章)$/i.test(trimmed);
+}
+
+type StudioSessionKind = SessionKind;
+type StudioActionSource = "free-text" | "button" | "slash" | "quick-action";
+type StudioRequestedIntent =
+  | "create_book"
+  | "write_next"
+  | "short_run"
+  | "play_start"
+  | "play_step"
+  | "generate_cover"
+  | "edit_artifact";
+
+const STUDIO_ACTION_SOURCES = new Set<StudioActionSource>(["free-text", "button", "slash", "quick-action"]);
+const STUDIO_REQUESTED_INTENTS = new Set<StudioRequestedIntent>([
+  "create_book",
+  "write_next",
+  "short_run",
+  "play_start",
+  "play_step",
+  "generate_cover",
+  "edit_artifact",
+]);
+
+function normalizeStudioSessionKind(value: unknown, fallback: StudioSessionKind): StudioSessionKind {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = SessionKindSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new ApiError(400, "INVALID_SESSION_KIND", `Invalid sessionKind: ${String(value)}`);
+  }
+  return parsed.data;
+}
+
+function normalizeStudioActionSource(value: unknown): StudioActionSource {
+  if (value === undefined || value === null || value === "") return "free-text";
+  if (typeof value !== "string" || !STUDIO_ACTION_SOURCES.has(value as StudioActionSource)) {
+    throw new ApiError(400, "INVALID_ACTION_SOURCE", `Invalid actionSource: ${String(value)}`);
+  }
+  return value as StudioActionSource;
+}
+
+function normalizeStudioRequestedIntent(value: unknown): StudioRequestedIntent | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !STUDIO_REQUESTED_INTENTS.has(value as StudioRequestedIntent)) {
+    throw new ApiError(400, "INVALID_REQUESTED_INTENT", `Invalid requestedIntent: ${String(value)}`);
+  }
+  return value as StudioRequestedIntent;
+}
+
+function shouldRunDirectWriteNext(args: {
+  readonly instruction: string;
+  readonly agentBookId: string | null | undefined;
+  readonly sessionKind: StudioSessionKind;
+  readonly actionSource: StudioActionSource;
+  readonly requestedIntent?: StudioRequestedIntent;
+}): boolean {
+  if (!args.agentBookId || args.sessionKind !== "book") return false;
+  if (args.requestedIntent === "write_next") return true;
+  if (args.actionSource === "free-text") return false;
+  return isWriteNextInstruction(args.instruction);
 }
 
 type ExternalChatEditResult = {
@@ -464,6 +537,7 @@ function looksLikeBookCreatedClaim(responseText: string): boolean {
 function validateAgentActionExecution(args: {
   readonly instruction: string;
   readonly agentBookId: string | null | undefined;
+  readonly requestedIntent?: StudioRequestedIntent;
   readonly responseText: string;
   readonly collectedToolExecs: ReadonlyArray<CollectedToolExec>;
 }): string | undefined {
@@ -474,10 +548,30 @@ function validateAgentActionExecution(args: {
 
   if (
     args.agentBookId
-    && isWriteNextInstruction(args.instruction)
+    && args.requestedIntent === "write_next"
     && !hasSuccessfulSubAgentExec(args.collectedToolExecs, "writer")
   ) {
     return "模型声称已完成下一章，但没有实际调用写作工具。请重试；如果仍失败，请检查模型是否支持工具调用。";
+  }
+
+  if (
+    !args.agentBookId
+    && args.requestedIntent === "create_book"
+    && !hasSuccessfulSubAgentExec(args.collectedToolExecs, "architect")
+  ) {
+    return "已确认建书，但模型没有实际调用建书工具。请重试；如果仍失败，请检查模型是否支持工具调用。";
+  }
+
+  if (args.requestedIntent === "short_run" && !hasSuccessfulToolExec(args.collectedToolExecs, "short_fiction_run")) {
+    return "已确认生成短篇，但模型没有实际调用短篇生产工具。请重试；如果仍失败，请检查模型是否支持工具调用。";
+  }
+
+  if (args.requestedIntent === "play_start" && !hasSuccessfulToolExec(args.collectedToolExecs, "play_start")) {
+    return "已确认启动互动世界，但模型没有实际调用互动世界工具。请重试；如果仍失败，请检查模型是否支持工具调用。";
+  }
+
+  if (args.requestedIntent === "generate_cover" && !hasSuccessfulToolExec(args.collectedToolExecs, "generate_cover")) {
+    return "已确认生成封面，但模型没有实际调用封面工具。请重试；如果仍失败，请检查模型是否支持工具调用。";
   }
 
   if (
@@ -2504,12 +2598,16 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   });
 
   app.post("/api/v1/sessions", async (c) => {
-    const body = await c.req.json<{ bookId?: string | null; sessionId?: string }>().catch(() => ({}));
+    const body = await c.req.json<{ bookId?: string | null; sessionId?: string; sessionKind?: string }>().catch(() => ({}));
     const bookId = normalizeApiBookId((body as { bookId?: unknown }).bookId, "bookId");
+    const sessionKind = normalizeStudioSessionKind(
+      (body as { sessionKind?: unknown }).sessionKind,
+      bookId ? "book" : "chat",
+    );
     const sessionId = (body as { sessionId?: string }).sessionId;
     // sessionId 只允许 timestamp-random 格式；防止注入任意文件名
     const safeSessionId = sessionId && /^[0-9]+-[a-z0-9]+$/.test(sessionId) ? sessionId : undefined;
-    const session = await createAndPersistBookSession(root, bookId, safeSessionId);
+    const session = await createAndPersistBookSession(root, bookId, safeSessionId, sessionKind);
     return c.json({ session });
   });
 
@@ -2534,10 +2632,22 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   });
 
   app.post("/api/v1/agent", async (c) => {
-    const { instruction, activeBookId, sessionId: reqSessionId, model: reqModel, service: reqService } = await c.req.json<{
+    const {
+      instruction,
+      activeBookId,
+      sessionId: reqSessionId,
+      sessionKind: reqSessionKind,
+      actionSource: reqActionSource,
+      requestedIntent: reqRequestedIntent,
+      model: reqModel,
+      service: reqService,
+    } = await c.req.json<{
       instruction: string;
       activeBookId?: string;
       sessionId?: string;
+      sessionKind?: string;
+      actionSource?: string;
+      requestedIntent?: string;
       model?: string;
       service?: string;
     }>();
@@ -2553,7 +2663,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       return c.json({ error: message, response: message }, 400);
     }
 
-    broadcast("agent:start", { instruction, activeBookId, sessionId });
+    const actionSource = normalizeStudioActionSource(reqActionSource);
+    const requestedIntent = normalizeStudioRequestedIntent(reqRequestedIntent);
+
+    broadcast("agent:start", { instruction, activeBookId, sessionId, actionSource, requestedIntent });
 
     try {
       // Load config + create LLM client (pipeline created after model resolution)
@@ -2579,6 +2692,19 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         );
       }
       const agentBookId = requestedActiveBookId ?? persistedBookId;
+      const sessionKind = normalizeStudioSessionKind(
+        reqSessionKind,
+        bookSession.sessionKind ?? (agentBookId ? "book" : "chat"),
+      );
+      if (bookSession.sessionKind !== sessionKind) {
+        const updatedSession = await createAndPersistBookSession(
+          root,
+          bookSession.bookId,
+          bookSession.sessionId,
+          sessionKind,
+        );
+        bookSession = updatedSession;
+      }
       if (agentBookId) {
         try {
           await state.loadBookConfig(agentBookId);
@@ -2600,12 +2726,14 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         }
       };
 
-      const externalEdit = await tryHandleExternalChatEdit({
-        root,
-        state,
-        instruction,
-        activeBookId: agentBookId,
-      });
+      const externalEdit = requestedIntent === "edit_artifact" || sessionKind === "edit"
+        ? await tryHandleExternalChatEdit({
+            root,
+            state,
+            instruction,
+            activeBookId: agentBookId,
+          })
+        : null;
       if (externalEdit) {
         await appendManualSessionMessages(root, bookSession.sessionId, [{
           role: "assistant",
@@ -2623,13 +2751,14 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
           },
           stopReason: "stop",
           timestamp: Date.now(),
-        }], instruction);
+        }], instruction, { sessionKind });
         await refreshBookSessionFromTranscript();
-        broadcast("agent:complete", { instruction, activeBookId: externalEdit.activeBookId, sessionId: bookSession.sessionId });
+        broadcast("agent:complete", { instruction, activeBookId: externalEdit.activeBookId, sessionId: bookSession.sessionId, sessionKind });
         return c.json({
           response: externalEdit.responseText,
           session: {
             sessionId: bookSession.sessionId,
+            sessionKind,
             ...(externalEdit.activeBookId ? { activeBookId: externalEdit.activeBookId } : {}),
           },
         });
@@ -2744,9 +2873,13 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         sessionIdForSSE: bookSession.sessionId,
       }));
 
-      if (agentBookId && isWriteNextInstruction(instruction)) {
+      if (shouldRunDirectWriteNext({ instruction, agentBookId, sessionKind, actionSource, requestedIntent })) {
+        const directWriteBookId = agentBookId;
+        if (!directWriteBookId) {
+          throw new ApiError(400, "BOOK_ID_REQUIRED", "write_next requires an active book");
+        }
         const toolCallId = `direct-writer-${Date.now().toString(36)}`;
-        const toolArgs = { agent: "writer", bookId: agentBookId };
+        const toolArgs = { agent: "writer", bookId: directWriteBookId };
         broadcast("tool:start", {
           sessionId: streamSessionId,
           id: toolCallId,
@@ -2756,9 +2889,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         });
 
         try {
-          const writeResult = await pipeline.writeNextChapter(agentBookId);
+          const writeResult = await pipeline.writeNextChapter(directWriteBookId);
           const responseText = [
-            `已为 ${agentBookId} 完成第 ${writeResult.chapterNumber} 章`,
+            `已为 ${directWriteBookId} 完成第 ${writeResult.chapterNumber} 章`,
             writeResult.title ? `《${writeResult.title}》` : "",
             `，字数 ${writeResult.wordCount}，状态 ${writeResult.status}。`,
           ].join("");
@@ -2766,7 +2899,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             content: [{ type: "text", text: responseText }],
             details: {
               kind: "chapter_written",
-              bookId: agentBookId,
+              bookId: directWriteBookId,
               chapterNumber: writeResult.chapterNumber,
               title: writeResult.title,
               wordCount: writeResult.wordCount,
@@ -2797,14 +2930,15 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             },
             stopReason: "toolUse",
             timestamp: Date.now(),
-          }], instruction);
+          }], instruction, { sessionKind });
           await refreshBookSessionFromTranscript();
-          broadcast("agent:complete", { instruction, activeBookId: agentBookId, sessionId: bookSession.sessionId });
+          broadcast("agent:complete", { instruction, activeBookId: directWriteBookId, sessionId: bookSession.sessionId, sessionKind });
           return c.json({
             response: responseText,
             session: {
               sessionId: bookSession.sessionId,
-              activeBookId: agentBookId,
+              sessionKind,
+              activeBookId: directWriteBookId,
             },
           });
         } catch (error) {
@@ -2817,7 +2951,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             result: toolResult,
             isError: true,
           });
-          broadcast("agent:error", { instruction, activeBookId: agentBookId, sessionId: bookSession.sessionId, error: message });
+          broadcast("agent:error", { instruction, activeBookId: agentBookId, sessionId: bookSession.sessionId, sessionKind, error: message });
           return c.json({
             error: { code: "AGENT_ACTION_FAILED", message },
             response: message,
@@ -2834,6 +2968,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
           pipeline,
           projectRoot: root,
           bookId: agentBookId,
+          sessionKind,
           sessionId: bookSession.sessionId,
           language: config.language ?? "zh",
           onEvent: (event) => {
@@ -2934,6 +3069,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         const actionExecutionError = validateAgentActionExecution({
           instruction,
           agentBookId,
+          requestedIntent,
           responseText: result.responseText,
           collectedToolExecs,
         });
@@ -2999,7 +3135,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             fallbackClient,
             reqModel ?? config.llm.model,
             [
-              { role: "system", content: buildAgentSystemPrompt(agentBookId, config.language ?? "zh") },
+              { role: "system", content: buildAgentSystemPrompt(agentBookId, config.language ?? "zh", sessionKind) },
               { role: "user", content: instruction },
             ],
             { maxTokens: 256 },
@@ -3008,6 +3144,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             const actionExecutionError = validateAgentActionExecution({
               instruction,
               agentBookId,
+              requestedIntent,
               responseText: fallback.content,
               collectedToolExecs,
             });
@@ -3033,13 +3170,14 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
               },
               stopReason: "stop",
               timestamp: Date.now(),
-            }], instruction);
+            }], instruction, { sessionKind });
             await refreshBookSessionFromTranscript();
             const createdBookId = await finalizeCreatedBook();
             return c.json({
               response: fallback.content,
               session: {
                 sessionId: bookSession.sessionId,
+                sessionKind,
                 ...(createdBookId ? { activeBookId: createdBookId } : {}),
               },
             });
@@ -3087,12 +3225,13 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       await refreshBookSessionFromTranscript();
       await finalizeCreatedBook();
 
-      broadcast("agent:complete", { instruction, activeBookId, sessionId: bookSession.sessionId });
+      broadcast("agent:complete", { instruction, activeBookId, sessionId: bookSession.sessionId, sessionKind });
 
       return c.json({
         response: result.responseText,
         session: {
           sessionId: bookSession.sessionId,
+          sessionKind,
           ...(bookSession.bookId ? { activeBookId: bookSession.bookId } : {}),
         },
       });
@@ -3105,7 +3244,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         throw new ApiError(409, "SESSION_ALREADY_MIGRATED", migratedMessage);
       }
       const msg = e instanceof Error ? e.message : String(e);
-      broadcast("agent:error", { instruction, activeBookId, sessionId, error: msg });
+      broadcast("agent:error", { instruction, activeBookId, sessionId, sessionKind: reqSessionKind, error: msg });
 
       // Agent busy — return 429 with user-friendly message
       if (/already processing|prompt.*queue/i.test(msg)) {

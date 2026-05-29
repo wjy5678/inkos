@@ -1,6 +1,6 @@
 import { readdir, unlink } from "node:fs/promises";
 import { createBookSession } from "./session.js";
-import type { BookSession } from "./session.js";
+import type { BookSession, SessionKind } from "./session.js";
 import {
   appendTranscriptEvents,
   legacyBookSessionPath,
@@ -66,6 +66,7 @@ async function appendSessionCreatedEvent(
       seq: nextSeq,
       timestamp: session.createdAt,
       bookId: session.bookId,
+      ...(session.sessionKind ? { sessionKind: session.sessionKind } : {}),
       title: session.title,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
@@ -78,6 +79,7 @@ async function appendSessionMetadataUpdatedEvent(
   sessionId: string,
   metadata: {
     readonly bookId?: string | null;
+    readonly sessionKind?: SessionKind;
     readonly title?: string | null;
     readonly updatedAt: number;
   },
@@ -90,6 +92,7 @@ async function appendSessionMetadataUpdatedEvent(
     timestamp: metadata.updatedAt,
     updatedAt: metadata.updatedAt,
     ...("bookId" in metadata ? { bookId: metadata.bookId } : {}),
+    ...(metadata.sessionKind ? { sessionKind: metadata.sessionKind } : {}),
     ...("title" in metadata ? { title: metadata.title } : {}),
   }]);
 }
@@ -110,6 +113,7 @@ export async function persistBookSession(
 
   await appendSessionMetadataUpdatedEvent(projectRoot, session.sessionId, {
     bookId: session.bookId,
+    ...(session.sessionKind ? { sessionKind: session.sessionKind } : {}),
     title: session.title,
     updatedAt: session.updatedAt,
   });
@@ -118,6 +122,7 @@ export async function persistBookSession(
 export interface BookSessionSummary {
   readonly sessionId: string;
   readonly bookId: string | null;
+  readonly sessionKind?: SessionKind;
   readonly title: string | null;
   readonly messageCount: number;
   readonly createdAt: number;
@@ -154,6 +159,7 @@ export async function listBookSessions(
         return {
           sessionId: session.sessionId,
           bookId: session.bookId,
+          sessionKind: session.sessionKind,
           title: session.title,
           messageCount: session.messages.length,
           createdAt: session.createdAt,
@@ -214,13 +220,23 @@ export async function createAndPersistBookSession(
   projectRoot: string,
   bookId: string | null,
   sessionId?: string,
+  sessionKind?: SessionKind,
 ): Promise<BookSession> {
   // 如果指定了 sessionId 且对应文件已存在，视为幂等操作直接返回（支持"用户发消息时才持久化 draft"流程）
   if (sessionId) {
     const existing = await loadBookSession(projectRoot, sessionId);
-    if (existing) return existing;
+    if (existing) {
+      if (sessionKind && existing.sessionKind !== sessionKind) {
+        await appendSessionMetadataUpdatedEvent(projectRoot, sessionId, {
+          sessionKind,
+          updatedAt: Date.now(),
+        });
+        return await loadBookSession(projectRoot, sessionId) ?? existing;
+      }
+      return existing;
+    }
   }
-  const session = createBookSession(bookId, sessionId);
+  const session = createBookSession(bookId, sessionId, sessionKind);
   await appendSessionCreatedEvent(projectRoot, session);
   return session;
 }

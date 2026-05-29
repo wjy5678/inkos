@@ -164,6 +164,16 @@ describe("buildPartsFromEvents", () => {
     expect(parts[1].type === "tool" ? parts[1].execution.label : "").toBe("推进互动世界");
   });
 
+  it("labels proposed action confirmations", () => {
+    const parts = buildPartsFromEvents([
+      { type: "tool:start", id: "a1", tool: "propose_action" },
+      { type: "tool:end", id: "a1", result: "confirm", details: { kind: "proposed_action" } },
+    ]);
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0].type === "tool" ? parts[0].execution.label : "").toBe("确认动作");
+  });
+
   it("localizes known tool errors", () => {
     const parts = buildPartsFromEvents([
       { type: "tool:start", id: "t1", tool: "sub_agent", agent: "writer" },

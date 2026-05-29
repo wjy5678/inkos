@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 export interface QuickActionsProps {
-  readonly onAction: (command: string) => void;
+  readonly onAction: (command: string, requestedIntent?: "write_next") => void;
   readonly disabled: boolean;
   readonly isZh: boolean;
 }
@@ -17,6 +17,7 @@ interface ChipDef {
   readonly labelEn: string;
   readonly commandZh: string;
   readonly commandEn: string;
+  readonly requestedIntent?: "write_next";
 }
 
 const CHIPS: ReadonlyArray<ChipDef> = [
@@ -26,6 +27,7 @@ const CHIPS: ReadonlyArray<ChipDef> = [
     labelEn: "Write next",
     commandZh: "写下一章",
     commandEn: "write next",
+    requestedIntent: "write_next",
   },
   {
     icon: <Search size={12} />,
@@ -59,7 +61,7 @@ export function QuickActions({ onAction, disabled, isZh }: QuickActionsProps) {
         return (
           <button
             key={label}
-            onClick={() => onAction(command)}
+            onClick={() => onAction(command, chip.requestedIntent)}
             disabled={disabled}
             className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/50 border border-border/30 text-xs font-medium text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all disabled:opacity-40 disabled:pointer-events-none group"
           >

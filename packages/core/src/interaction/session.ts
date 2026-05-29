@@ -3,6 +3,9 @@ import { AutomationModeSchema, type AutomationMode } from "./modes.js";
 import { ExecutionStateSchema, InteractionEventSchema, type InteractionEvent } from "./events.js";
 import { assertSafeBookId, isSafeBookId } from "../utils/book-id.js";
 
+export const SessionKindSchema = z.enum(["chat", "book-create", "book", "short", "play", "edit"]);
+export type SessionKind = z.infer<typeof SessionKindSchema>;
+
 export const PendingDecisionSchema = z.object({
   kind: z.string().min(1),
   bookId: z.string().min(1),
@@ -103,6 +106,7 @@ export type InteractionSession = z.infer<typeof InteractionSessionSchema>;
 export const BookSessionSchema = z.object({
   sessionId: z.string().min(1),
   bookId: z.string().refine(isSafeBookId, "Invalid bookId").nullable(),
+  sessionKind: SessionKindSchema.optional(),
   title: z.string().nullable().default(null),
   messages: z.array(InteractionMessageSchema).default([]),
   creationDraft: BookCreationDraftSchema.optional(),
@@ -124,12 +128,13 @@ export const GlobalSessionSchema = z.object({
 
 export type GlobalSession = z.infer<typeof GlobalSessionSchema>;
 
-export function createBookSession(bookId: string | null, sessionId?: string): BookSession {
+export function createBookSession(bookId: string | null, sessionId?: string, sessionKind?: SessionKind): BookSession {
   const now = Date.now();
   const safeBookId = bookId === null ? null : assertSafeBookId(bookId);
   return {
     sessionId: sessionId ?? `${now}-${Math.random().toString(36).slice(2, 8)}`,
     bookId: safeBookId,
+    sessionKind,
     title: null,
     messages: [],
     draftRounds: [],

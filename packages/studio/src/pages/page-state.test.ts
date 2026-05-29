@@ -149,8 +149,8 @@ describe("waitForBookReady", () => {
 });
 
 describe("resolveDraftInstruction", () => {
-  it("forces the first ideation turn through /new so an active book does not hijack the flow", () => {
-    expect(resolveDraftInstruction("我想写个港风商战悬疑", false)).toBe("/new 我想写个港风商战悬疑");
+  it("keeps the user's first ideation turn untouched", () => {
+    expect(resolveDraftInstruction("我想写个港风商战悬疑", false)).toBe("我想写个港风商战悬疑");
     expect(resolveDraftInstruction("把世界观改成近未来港口城", true)).toBe("把世界观改成近未来港口城");
   });
 });
@@ -160,6 +160,9 @@ describe("book create agent session", () => {
     expect(buildBookCreateAgentRequest("/create", "123456-abcdef")).toEqual({
       instruction: "/create",
       sessionId: "123456-abcdef",
+      sessionKind: "book-create",
+      actionSource: "slash",
+      requestedIntent: "create_book",
     });
   });
 

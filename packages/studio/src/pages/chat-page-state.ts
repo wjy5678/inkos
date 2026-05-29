@@ -16,6 +16,7 @@ export interface ChatPageModelPreference {
 
 export interface ChatPageSessionSummary {
   readonly sessionId: string;
+  readonly sessionKind?: string;
   readonly messageCount: number;
 }
 
@@ -106,7 +107,8 @@ export function pickModelSelection(
 export function pickProjectChatSessionId(
   sessions: ReadonlyArray<ChatPageSessionSummary>,
 ): string | null {
-  return sessions.find((session) => session.messageCount > 0)?.sessionId
-    ?? sessions[0]?.sessionId
+  const chatSessions = sessions.filter((session) => !session.sessionKind || session.sessionKind === "chat");
+  return chatSessions.find((session) => session.messageCount > 0)?.sessionId
+    ?? chatSessions[0]?.sessionId
     ?? null;
 }

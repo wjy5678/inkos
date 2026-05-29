@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import type { ToolExecution, PipelineStage } from "../../store/chat/types";
+import type { ChatRequestedIntent, ChatSessionKind, ToolExecution, PipelineStage } from "../../store/chat/types";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -109,6 +109,15 @@ export interface PlayToolDetails {
   readonly playUrl?: string;
 }
 
+export interface ProposedActionDetails {
+  readonly kind: "proposed_action";
+  readonly action: ChatRequestedIntent;
+  readonly targetSessionKind: ChatSessionKind;
+  readonly title?: string;
+  readonly summary?: string;
+  readonly instruction?: string;
+}
+
 function stringField(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
   return typeof value === "string" && value.trim() ? value : undefined;
@@ -183,6 +192,68 @@ export function getPlayToolDetails(exec: ToolExecution): PlayToolDetails | null 
   };
 }
 
+export function getProposedActionDetails(exec: ToolExecution): ProposedActionDetails | null {
+  if (exec.tool !== "propose_action") return null;
+  if (!exec.details || typeof exec.details !== "object") return null;
+  const record = exec.details as Record<string, unknown>;
+  if (record.kind !== "proposed_action") return null;
+  const action = stringField(record, "action") as ChatRequestedIntent | undefined;
+  const targetSessionKind = stringField(record, "targetSessionKind") as ChatSessionKind | undefined;
+  const instruction = stringField(record, "instruction");
+  if (!action || !targetSessionKind || !instruction) return null;
+  return {
+    kind: "proposed_action",
+    action,
+    targetSessionKind,
+    title: stringField(record, "title"),
+    summary: stringField(record, "summary"),
+    instruction,
+  };
+}
+
+function ProposedActionPreview({
+  exec,
+  onProposedAction,
+  onRejectProposedAction,
+}: {
+  exec: ToolExecution;
+  onProposedAction?: (details: ProposedActionDetails) => void;
+  onRejectProposedAction?: (details: ProposedActionDetails) => void;
+}) {
+  if (exec.tool !== "propose_action" || exec.status !== "completed") return null;
+  const details = getProposedActionDetails(exec);
+  if (!details) return null;
+  return (
+    <div className="mx-3 mb-3 mt-1 rounded-xl border border-primary/25 bg-primary/5 px-3 py-3">
+      <div className="text-sm font-semibold text-foreground">{details.title ?? "确认执行"}</div>
+      {details.summary && (
+        <div className="mt-1 text-xs leading-5 text-muted-foreground">{details.summary}</div>
+      )}
+      <div className="mt-2 rounded-lg bg-background/70 px-2.5 py-2 text-xs leading-5 text-muted-foreground">
+        {details.instruction}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => onProposedAction?.(details)}
+          disabled={!onProposedAction}
+          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+        >
+          继续执行
+        </button>
+        <button
+          type="button"
+          onClick={() => onRejectProposedAction?.(details)}
+          disabled={!onRejectProposedAction}
+          className="rounded-lg border border-border/60 bg-background/80 px-3 py-1.5 text-xs font-medium text-muted-foreground disabled:opacity-50"
+        >
+          取消
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PlayResultPreview({ exec }: { exec: ToolExecution }) {
   if (!["play_start", "play_step"].includes(exec.tool) || exec.status !== "completed") return null;
   const details = getPlayToolDetails(exec);
@@ -217,7 +288,7 @@ function PlayResultPreview({ exec }: { exec: ToolExecution }) {
 }
 
 function isPipelineTool(tool: string): boolean {
-  return tool === "sub_agent" || tool === "short_fiction_run" || tool === "generate_cover" || tool === "play_start" || tool === "play_step";
+  return tool === "sub_agent" || tool === "propose_action" || tool === "short_fiction_run" || tool === "generate_cover" || tool === "play_start" || tool === "play_step";
 }
 
 // -- Live elapsed timer hook --
@@ -235,7 +306,15 @@ function useElapsedTimer(startedAt: number, active: boolean): number {
 
 // -- Pipeline operation (sub_agent) --
 
-function PipelineExecution({ exec }: { exec: ToolExecution }) {
+function PipelineExecution({
+  exec,
+  onProposedAction,
+  onRejectProposedAction,
+}: {
+  exec: ToolExecution;
+  onProposedAction?: (details: ProposedActionDetails) => void;
+  onRejectProposedAction?: (details: ProposedActionDetails) => void;
+}) {
   const isActive = exec.status === "running" || exec.status === "processing";
   const [open, setOpen] = useState(isActive);
   const elapsedMs = useElapsedTimer(exec.startedAt, isActive);
@@ -269,6 +348,11 @@ function PipelineExecution({ exec }: { exec: ToolExecution }) {
           <ChevronDown size={14} className={`text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
         </div>
       </CollapsibleTrigger>
+      <ProposedActionPreview
+        exec={exec}
+        onProposedAction={onProposedAction}
+        onRejectProposedAction={onRejectProposedAction}
+      />
       <ShortFictionResultPreview exec={exec} />
       <PlayResultPreview exec={exec} />
       <CollapsibleContent>
@@ -335,6 +419,8 @@ function UtilityToolsGroup({ execs }: { execs: ToolExecution[] }) {
 
 export interface ToolExecutionStepsProps {
   executions: ToolExecution[];
+  onProposedAction?: (details: ProposedActionDetails) => void;
+  onRejectProposedAction?: (details: ProposedActionDetails) => void;
 }
 
 /**
@@ -368,14 +454,21 @@ export function groupToolExecutionsChronologically(executions: ToolExecution[]):
   return groups;
 }
 
-export function ToolExecutionSteps({ executions }: ToolExecutionStepsProps) {
+export function ToolExecutionSteps({ executions, onProposedAction, onRejectProposedAction }: ToolExecutionStepsProps) {
   const groups = useMemo(() => groupToolExecutionsChronologically(executions), [executions]);
 
   return (
     <div className="space-y-2 mt-2">
       {groups.map((g, i) =>
         g.type === "pipeline"
-          ? <PipelineExecution key={g.exec.id} exec={g.exec} />
+          ? (
+              <PipelineExecution
+                key={g.exec.id}
+                exec={g.exec}
+                onProposedAction={onProposedAction}
+                onRejectProposedAction={onRejectProposedAction}
+              />
+            )
           : <UtilityToolsGroup key={`utils-${i}`} execs={g.execs} />
       )}
     </div>

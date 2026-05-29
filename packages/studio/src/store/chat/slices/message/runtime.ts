@@ -24,6 +24,7 @@ const TOOL_LABELS: Record<string, string> = {
   edit: "编辑文件",
   grep: "搜索",
   ls: "列目录",
+  propose_action: "确认动作",
   short_fiction_run: "短篇生产",
   generate_cover: "生成封面",
   play_start: "启动互动世界",
@@ -147,6 +148,7 @@ export function deriveFlat(
 export function createSessionRuntime(input: {
   sessionId: string;
   bookId: string | null;
+  sessionKind?: SessionRuntime["sessionKind"];
   title: string | null;
   messages?: ReadonlyArray<Message>;
   isDraft?: boolean;
@@ -154,6 +156,7 @@ export function createSessionRuntime(input: {
   return {
     sessionId: input.sessionId,
     bookId: input.bookId,
+    sessionKind: input.sessionKind,
     title: input.title,
     messages: input.messages ?? [],
     stream: null,
@@ -207,13 +210,13 @@ export function updateSession(
 
 export function upsertSessionSummary(
   sessions: Record<string, SessionRuntime>,
-  summary: Pick<SessionSummary, "sessionId" | "bookId" | "title">,
+  summary: Pick<SessionSummary, "sessionId" | "bookId" | "sessionKind" | "title">,
 ): Record<string, SessionRuntime> {
   const existing = sessions[summary.sessionId];
   return {
     ...sessions,
     [summary.sessionId]: existing
-      ? { ...existing, bookId: summary.bookId, title: summary.title }
+      ? { ...existing, bookId: summary.bookId, sessionKind: summary.sessionKind ?? existing.sessionKind, title: summary.title }
       : createSessionRuntime(summary),
   };
 }

@@ -3,7 +3,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { TranscriptEventSchema, type TranscriptEvent } from "./session-transcript-schema.js";
-import type { TranscriptRole } from "./session-transcript-schema.js";
+import type { SessionKind, TranscriptRole } from "./session-transcript-schema.js";
 
 const SESSIONS_DIR = ".inkos/sessions";
 const appendQueues = new Map<string, Promise<void>>();
@@ -131,6 +131,7 @@ export async function appendManualSessionMessages(
   sessionId: string,
   messages: ReadonlyArray<AgentMessage>,
   input = "",
+  options: { readonly sessionKind?: SessionKind } = {},
 ): Promise<void> {
   const persistedMessages = messages
     .map((message) => ({ message, role: transcriptRoleForMessage(message) }))
@@ -147,6 +148,7 @@ export async function appendManualSessionMessages(
       requestId,
       seq: seq++,
       timestamp: Date.now(),
+      ...(options.sessionKind ? { sessionKind: options.sessionKind } : {}),
       input,
     }];
 

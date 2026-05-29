@@ -9,6 +9,7 @@ import {
   createSubAgentTool,
   createShortFictionRunTool,
   createPatchChapterTextTool,
+  createProposeActionTool,
   createRenameEntityTool,
   createWriteFileTool,
   createWriteTruthFileTool,
@@ -119,6 +120,31 @@ describe("agent deterministic writing tools", () => {
       expect(result.content[0].text).toContain("title is required");
     }
     expect(pipeline.initBook).not.toHaveBeenCalled();
+  });
+
+  it("localizes propose_action fallback copy", async () => {
+    const zhTool = createProposeActionTool("zh");
+    const enTool = createProposeActionTool("en");
+
+    const zh = await zhTool.execute("proposal-zh", {
+      action: "create_book",
+      instruction: "写一本港风商战小说",
+    });
+    const en = await enTool.execute("proposal-en", {
+      action: "generate_cover",
+      instruction: "Generate a cover for Night Ledger.",
+    });
+
+    expect(zh.content[0]?.type).toBe("text");
+    expect(en.content[0]?.type).toBe("text");
+    if (zh.content[0]?.type === "text") {
+      expect(zh.content[0].text).toContain("创建长篇书籍");
+      expect(zh.content[0].text).toContain("确认后会切换到对应入口");
+    }
+    if (en.content[0]?.type === "text") {
+      expect(en.content[0].text).toContain("Generate cover");
+      expect(en.content[0].text).toContain("After confirmation");
+    }
   });
 
   it("passes the explicit architect title straight into initBook", async () => {

@@ -186,7 +186,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
     // 发第一条消息时 sendMessage 会调 POST /sessions 真正创建。
     setExpandedBooks((prev) => new Set(prev).add(bookId));
     setInput("");
-    createDraftSession(bookId);
+    createDraftSession(bookId, "book");
     nav.toBook(bookId);
   };
 
@@ -200,7 +200,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   const handleCreateProjectChatSession = () => {
     setProjectChatExpanded(true);
-    const sessionId = createDraftSession(null);
+    const sessionId = createDraftSession(null, "chat");
     setProjectChatSessionId(sessionId);
     setInput("");
     nav.toChat();
@@ -213,11 +213,9 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   const launchProjectMode = (kind: "short" | "play") => {
     setProjectChatExpanded(true);
-    const sessionId = createDraftSession(null);
+    const sessionId = createDraftSession(null, kind);
     setProjectChatSessionId(sessionId);
-    setInput(kind === "short"
-      ? "InkOS Short：我想从这里开始："
-      : "InkOS Play：我想从这里开始：");
+    setInput("");
     nav.toChat();
   };
 

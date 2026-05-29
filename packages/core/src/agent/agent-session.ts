@@ -17,6 +17,7 @@ import {
   createGenerateCoverTool,
   createPlayStartTool,
   createPlayStepTool,
+  createProposeActionTool,
 } from "./agent-tools.js";
 import { createBookContextTransform } from "./context-transform.js";
 import {
@@ -30,6 +31,7 @@ import {
   restoreAgentMessagesFromTranscript,
 } from "../interaction/session-transcript-restore.js";
 import type { TranscriptEvent, TranscriptRole } from "../interaction/session-transcript-schema.js";
+import type { SessionKind } from "../interaction/session.js";
 import { assertSafeBookId } from "../utils/book-id.js";
 
 // ---------------------------------------------------------------------------
@@ -41,6 +43,8 @@ export interface AgentSessionConfig {
   sessionId: string;
   /** Book ID, or null if in "new book" mode. */
   bookId: string | null;
+  /** Studio conversation surface. Used to narrow the visible tools. */
+  sessionKind?: SessionKind;
   /** Language for the system prompt. */
   language: string;
   /** PipelineRunner for sub-agent tool delegation. */
@@ -75,6 +79,7 @@ interface CachedAgent {
   sessionId: string;
   projectRoot: string;
   bookId: string | null;
+  sessionKind: SessionKind;
   language: string;
   modelIdentity: string;
   apiKey: string | undefined;
@@ -233,6 +238,7 @@ async function ensureSessionCreatedEvent(
   projectRoot: string,
   sessionId: string,
   bookId: string | null,
+  sessionKind?: SessionKind,
 ): Promise<void> {
   await appendTranscriptEvents(projectRoot, sessionId, ({ events, nextSeq }) => {
     if (events.some((event) => event.type === "session_created")) return [];
@@ -245,6 +251,7 @@ async function ensureSessionCreatedEvent(
       seq: nextSeq,
       timestamp: now,
       bookId,
+      ...(sessionKind ? { sessionKind } : {}),
       title: null,
       createdAt: now,
       updatedAt: now,
@@ -471,24 +478,42 @@ function agentMessagesToPlain(
 function createAgentToolsForMode(params: {
   readonly pipeline: PipelineRunner;
   readonly bookId: string | null;
+  readonly sessionKind: SessionKind;
   readonly projectRoot: string;
   readonly allowSystemFileRead: boolean;
+  readonly language: string;
 }) {
   const subAgentTool = createSubAgentTool(params.pipeline, params.bookId, params.projectRoot);
-  const shortFictionTool = createShortFictionRunTool(params.pipeline, params.projectRoot);
-  const generateCoverTool = createGenerateCoverTool(params.projectRoot);
-  const playStartTool = createPlayStartTool(params.projectRoot);
-  const playStepTool = createPlayStepTool(params.pipeline, params.projectRoot);
-  if (!params.bookId) {
-    return [subAgentTool, shortFictionTool, generateCoverTool, playStartTool, playStepTool];
+
+  if (params.sessionKind === "chat") {
+    return [createProposeActionTool(params.language === "en" ? "en" : "zh")];
   }
 
-  return [
+  if (params.sessionKind === "short") {
+    return [
+      createShortFictionRunTool(params.pipeline, params.projectRoot),
+      createGenerateCoverTool(params.projectRoot),
+    ];
+  }
+
+  if (params.sessionKind === "play") {
+    return [
+      createPlayStartTool(params.projectRoot),
+      createPlayStepTool(params.pipeline, params.projectRoot),
+    ];
+  }
+
+  if (params.sessionKind === "book-create" && !params.bookId) {
+    return [subAgentTool];
+  }
+
+  if (!params.bookId) {
+    return [];
+  }
+
+  const bookTools = [
     subAgentTool,
-    shortFictionTool,
-    generateCoverTool,
-    playStartTool,
-    playStepTool,
+    createGenerateCoverTool(params.projectRoot),
     createReadTool(params.projectRoot, { allowSystemPaths: params.allowSystemFileRead }),
     createWriteTruthFileTool(params.pipeline, params.projectRoot, params.bookId),
     createRenameEntityTool(params.pipeline, params.projectRoot, params.bookId),
@@ -496,6 +521,12 @@ function createAgentToolsForMode(params: {
     createGrepTool(params.projectRoot),
     createLsTool(params.projectRoot),
   ];
+
+  if (params.sessionKind === "edit") {
+    return bookTools.filter((tool) => tool.name !== "sub_agent" && tool.name !== "generate_cover");
+  }
+
+  return bookTools;
 }
 
 /**
@@ -527,6 +558,7 @@ async function runAgentSessionUnlocked(
   // skipped) and we don't want that to (a) throw in path.join or (b) trigger
   // a spurious cache eviction because `null !== undefined`.
   const bookId: string | null = config.bookId ? assertSafeBookId(config.bookId) : null;
+  const sessionKind: SessionKind = config.sessionKind ?? (bookId ? "book" : "chat");
   const model = resolveModel(config.model);
   const requestedModelIdentity = agentModelIdentity(model);
   const allowSystemFileRead = config.allowSystemFileRead ?? envFlagEnabled(process.env.INKOS_AGENT_ALLOW_SYSTEM_READ, false);
@@ -545,6 +577,7 @@ async function runAgentSessionUnlocked(
     const modelChanged = cached.modelIdentity !== requestedModelIdentity;
     const projectRootChanged = cached.projectRoot !== projectRoot;
     const bookChanged = cached.bookId !== bookId;
+    const sessionKindChanged = cached.sessionKind !== sessionKind;
     const languageChanged = cached.language !== language;
     const apiKeyChanged = cached.apiKey !== config.apiKey;
     const readPermissionChanged = cached.allowSystemFileRead !== allowSystemFileRead;
@@ -554,6 +587,7 @@ async function runAgentSessionUnlocked(
       modelChanged ||
       projectRootChanged ||
       bookChanged ||
+      sessionKindChanged ||
       languageChanged ||
       apiKeyChanged ||
       readPermissionChanged ||
@@ -567,7 +601,7 @@ async function runAgentSessionUnlocked(
   if (!cached) {
     const restoredMessages = appendRestoredHistoryBoundary(
       adaptRestoredAgentMessagesForModel(
-        await restoreAgentMessagesFromTranscript(projectRoot, sessionId),
+        await restoreAgentMessagesFromTranscript(projectRoot, sessionId, sessionKind),
         model,
       ),
       language,
@@ -580,8 +614,8 @@ async function runAgentSessionUnlocked(
     const agent = new Agent({
       initialState: {
         model,
-        systemPrompt: buildAgentSystemPrompt(bookId, language),
-        tools: createAgentToolsForMode({ pipeline, bookId, projectRoot, allowSystemFileRead }),
+        systemPrompt: buildAgentSystemPrompt(bookId, language, sessionKind),
+        tools: createAgentToolsForMode({ pipeline, bookId, sessionKind, projectRoot, allowSystemFileRead, language }),
         messages: initialAgentMessages,
       },
       transformContext: createBookContextTransform(bookId, projectRoot),
@@ -598,6 +632,7 @@ async function runAgentSessionUnlocked(
       sessionId,
       projectRoot,
       bookId,
+      sessionKind,
       language,
       modelIdentity: requestedModelIdentity,
       apiKey: config.apiKey,
@@ -614,7 +649,7 @@ async function runAgentSessionUnlocked(
 
   // ----- Prepare transcript persistence -----
   const requestId = randomUUID();
-  await ensureSessionCreatedEvent(projectRoot, sessionId, bookId);
+  await ensureSessionCreatedEvent(projectRoot, sessionId, bookId, sessionKind);
   await appendAgentTranscriptEvent(projectRoot, sessionId, (seq) => ({
     type: "request_started",
     version: 1,
@@ -622,6 +657,7 @@ async function runAgentSessionUnlocked(
     requestId,
     seq,
     timestamp: Date.now(),
+    sessionKind,
     input: userMessage,
   }));
 

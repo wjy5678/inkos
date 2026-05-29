@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { SessionKindSchema, type SessionKind } from "./session.js";
+export type { SessionKind };
 
 export const TranscriptRoleSchema = z.enum(["user", "assistant", "toolResult", "system"]);
 export type TranscriptRole = z.infer<typeof TranscriptRoleSchema>;
@@ -13,6 +15,7 @@ const BaseEventSchema = z.object({
 export const SessionCreatedEventSchema = BaseEventSchema.extend({
   type: z.literal("session_created"),
   bookId: z.string().nullable(),
+  sessionKind: SessionKindSchema.optional(),
   title: z.string().nullable().default(null),
   createdAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
@@ -21,6 +24,7 @@ export const SessionCreatedEventSchema = BaseEventSchema.extend({
 export const SessionMetadataUpdatedEventSchema = BaseEventSchema.extend({
   type: z.literal("session_metadata_updated"),
   bookId: z.string().nullable().optional(),
+  sessionKind: SessionKindSchema.optional(),
   title: z.string().nullable().optional(),
   updatedAt: z.number().int().nonnegative(),
 });
@@ -28,6 +32,7 @@ export const SessionMetadataUpdatedEventSchema = BaseEventSchema.extend({
 export const RequestStartedEventSchema = BaseEventSchema.extend({
   type: z.literal("request_started"),
   requestId: z.string().min(1),
+  sessionKind: SessionKindSchema.optional(),
   input: z.string(),
 });
 

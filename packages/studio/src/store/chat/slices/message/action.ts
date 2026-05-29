@@ -1,8 +1,10 @@
 import type { StateCreator } from "zustand";
 import type {
   AgentResponse,
+  ChatSessionKind,
   ChatStore,
   MessageActions,
+  SendMessageOptions,
   SessionResponse,
   SessionSummary,
 } from "../../types";
@@ -120,11 +122,11 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
     }
   },
 
-  createSession: async (bookId) => {
+  createSession: async (bookId, sessionKind) => {
     const data = await fetchJson<SessionResponse>("/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookId }),
+      body: JSON.stringify({ bookId, sessionKind }),
     });
     const sessionId = data.session?.sessionId;
     if (!sessionId) {
@@ -135,6 +137,7 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
       const runtime = createSessionRuntime({
         sessionId,
         bookId: data.session?.bookId ?? bookId ?? null,
+        sessionKind: data.session?.sessionKind ?? sessionKind,
         title: data.session?.title ?? null,
       });
       return {
@@ -156,7 +159,7 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
     return sessionId;
   },
 
-  createDraftSession: (bookId) => {
+  createDraftSession: (bookId, sessionKind) => {
     // 前端生成 sessionId（与后端 createBookSession 同格式），暂不持久化到磁盘，
     // 也暂不写入 sessionIdsByBook——侧边栏看不到这条 draft。
     // 发送第一条消息时 sendMessage 会调 POST /sessions { sessionId, bookId } 落盘
@@ -166,6 +169,7 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
       const runtime = createSessionRuntime({
         sessionId,
         bookId,
+        sessionKind,
         title: null,
         isDraft: true,
       });
@@ -260,9 +264,11 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
               ...(runtime ?? createSessionRuntime({
                 sessionId: detailSessionId,
                 bookId: nextBookId,
+                sessionKind: detail.sessionKind,
                 title: detail.title ?? null,
               })),
               bookId: nextBookId,
+              sessionKind: detail.sessionKind ?? runtime?.sessionKind,
               title: detail.title ?? runtime?.title ?? null,
               messages,
             },
@@ -281,10 +287,15 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
     }
   },
 
-  sendMessage: async (sessionId, text, activeBookId) => {
+  sendMessage: async (sessionId, text, options?: SendMessageOptions) => {
     const trimmed = text.trim();
     const session = get().sessions[sessionId];
     if (!trimmed || !session || session.isStreaming) return;
+    const activeBookId = options?.activeBookId;
+    const sessionKind: ChatSessionKind = options?.sessionKind
+      ?? session.sessionKind
+      ?? (activeBookId ? "book" : "chat");
+    const actionSource = options?.actionSource ?? "free-text";
 
     if (!get().selectedModel) {
       get().addUserMessage(sessionId, trimmed);
@@ -300,12 +311,12 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
         await fetchJson<SessionResponse>("/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, bookId: session.bookId }),
+          body: JSON.stringify({ sessionId, bookId: session.bookId, sessionKind }),
         });
         // 落盘成功：把 isDraft 翻成 false，同时把 sessionId 追加进 sessionIdsByBook
         // 让侧边栏现在才看到这条会话。
         set((state) => ({
-          sessions: updateSession(state.sessions, sessionId, () => ({ isDraft: false })),
+          sessions: updateSession(state.sessions, sessionId, () => ({ isDraft: false, sessionKind })),
           sessionIdsByBook: {
             ...state.sessionIdsByBook,
             [bookKey(session.bookId)]: mergeSessionIds(
@@ -347,6 +358,9 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
         body: JSON.stringify({
           instruction,
           activeBookId,
+          sessionKind,
+          actionSource,
+          requestedIntent: options?.requestedIntent,
           sessionId,
           model: get().selectedModel ?? undefined,
           service: get().selectedService ?? undefined,

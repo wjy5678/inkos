@@ -4,6 +4,7 @@ import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
 import { fetchJson } from "../hooks/use-api";
 import { chatSelectors, useChatStore } from "../store/chat";
+import type { ChatSessionKind } from "../store/chat";
 import { useServiceStore } from "../store/service";
 import {
   DropdownMenu,
@@ -18,7 +19,7 @@ import {
 } from "../components/ai-elements/reasoning";
 import { ChatMessage } from "../components/chat/ChatMessage";
 import { QuickActions } from "../components/chat/QuickActions";
-import { ToolExecutionSteps } from "../components/chat/ToolExecutionSteps";
+import { ToolExecutionSteps, type ProposedActionDetails } from "../components/chat/ToolExecutionSteps";
 import {
   Loader2,
   BotMessageSquare,
@@ -69,6 +70,7 @@ interface ServiceConfigPayload {
 export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-create", nav, theme, t, sse: _sse }: ChatPageProps) {
   // -- Store selectors --
   const messages = useChatStore(chatSelectors.activeMessages);
+  const activeSession = useChatStore(chatSelectors.activeSession);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const input = useChatStore((s) => s.input);
   const loading = useChatStore(chatSelectors.isActiveSessionStreaming);
@@ -88,6 +90,8 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
 
   const isZh = t("nav.connected") === "\u5DF2\u8FDE\u63A5";
   const hasBook = Boolean(activeBookId);
+  const currentSessionKind: ChatSessionKind = activeSession?.sessionKind
+    ?? (mode === "book-create" ? "book-create" : activeBookId ? "book" : "chat");
 
   // Derived: is the assistant currently streaming/thinking/executing tools?
   const isStreaming = useMemo(() => {
@@ -198,6 +202,14 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
     let cancelled = false;
 
     void (async () => {
+      if (!activeBookId && mode === "project-chat") {
+        const state = useChatStore.getState();
+        const currentSession = state.activeSessionId ? state.sessions[state.activeSessionId] : null;
+        if (currentSession?.bookId === null && currentSession.isDraft) {
+          return;
+        }
+      }
+
       if (activeBookId) {
         await loadSessionList(activeBookId);
         if (cancelled) return;
@@ -215,7 +227,7 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
           return;
         }
 
-        await createSession(activeBookId);
+        await createSession(activeBookId, "book");
         return;
       }
 
@@ -247,7 +259,7 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
         }
       }
 
-      const newSessionId = await createSession(null);
+      const newSessionId = await createSession(null, mode === "book-create" ? "book-create" : "chat");
       if (!cancelled) {
         if (mode === "project-chat") {
           setProjectChatSessionId(newSessionId);
@@ -264,17 +276,56 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
 
   const onSend = (text: string) => {
     if (!activeSessionId) return;
-    void sendMessage(activeSessionId, text, activeBookId);
+    void sendMessage(activeSessionId, text, {
+      activeBookId,
+      sessionKind: currentSessionKind,
+      actionSource: "free-text",
+    });
   };
 
-  const handleQuickAction = (command: string) => {
+  const handleQuickAction = (command: string, requestedIntent?: "write_next") => {
     if (!activeSessionId) return;
-    void sendMessage(activeSessionId, command, activeBookId);
+    void sendMessage(activeSessionId, command, {
+      activeBookId,
+      sessionKind: currentSessionKind,
+      actionSource: "quick-action",
+      requestedIntent,
+    });
   };
 
-  const emptyGuidance = isZh
-    ? "\u544A\u8BC9\u6211\u4F60\u60F3\u5199\u4EC0\u4E48\u2014\u2014\u9898\u6750\u3001\u4E16\u754C\u89C2\u3001\u4E3B\u89D2\u3001\u6838\u5FC3\u51B2\u7A81"
-    : "Tell me what you want to write \u2014 genre, world, protagonist, core conflict";
+  const handleProposedAction = async (details: ProposedActionDetails) => {
+    const targetSessionId = await createSession(null, details.targetSessionKind);
+    await sendMessage(targetSessionId, details.instruction ?? "", {
+      sessionKind: details.targetSessionKind,
+      actionSource: "button",
+      requestedIntent: details.action,
+    });
+  };
+
+  const handleRejectProposedAction = async (details: ProposedActionDetails) => {
+    if (!activeSessionId) return;
+    await sendMessage(activeSessionId, `取消这次操作：${details.title ?? details.instruction}`, {
+      activeBookId,
+      sessionKind: currentSessionKind,
+      actionSource: "button",
+    });
+  };
+
+  const emptyGuidance = (() => {
+    if (currentSessionKind === "short") {
+      return isZh
+        ? "说一个短篇方向、标题灵感、人物压力或核心冲突，我会走 InkOS Short 生成正文、简介和封面。"
+        : "Describe a short-fiction direction, title hook, pressure, or core conflict to run InkOS Short.";
+    }
+    if (currentSessionKind === "play") {
+      return isZh
+        ? "说一个可玩的世界、角色处境或开场动作，我会启动互动世界；之后你可以自由行动或点建议动作。"
+        : "Describe a playable world, character situation, or opening action to start an interactive world.";
+    }
+    return isZh
+      ? "\u544A\u8BC9\u6211\u4F60\u60F3\u5199\u4EC0\u4E48\u2014\u2014\u9898\u6750\u3001\u4E16\u754C\u89C2\u3001\u4E3B\u89D2\u3001\u6838\u5FC3\u51B2\u7A81"
+      : "Tell me what you want to write \u2014 genre, world, protagonist, core conflict";
+  })();
 
   return (
     <div className="flex flex-col h-full flex-1 min-w-0">
@@ -339,7 +390,14 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
                           );
                         }
                         if (item.kind === "tools") {
-                          return <ToolExecutionSteps key={`x-${item.startIdx}`} executions={item.parts.map(p => p.execution)} />;
+                          return (
+                            <ToolExecutionSteps
+                              key={`x-${item.startIdx}`}
+                              executions={item.parts.map(p => p.execution)}
+                              onProposedAction={handleProposedAction}
+                              onRejectProposedAction={handleRejectProposedAction}
+                            />
+                          );
                         }
                         if (item.kind === "text" && item.part.content) {
                           return (

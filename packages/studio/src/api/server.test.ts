@@ -259,6 +259,7 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     probeModelsFromUpstream: probeModelsFromUpstreamMock,
     fetchWithProxy: vi.fn((input: Parameters<typeof fetch>[0], init?: RequestInit) => fetch(input, init)),
     GLOBAL_ENV_PATH: join(tmpdir(), "inkos-global.env"),
+    SessionKindSchema: actual.SessionKindSchema,
   };
 });
 
@@ -439,6 +440,7 @@ describe("createStudioServer daemon lifecycle", () => {
     const defaultBookSession = {
       sessionId: "agent-session-1",
       bookId: "demo-book",
+      sessionKind: "book",
       title: null,
       messages: [],
       events: [],
@@ -2324,7 +2326,7 @@ describe("createStudioServer daemon lifecycle", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(createAndPersistBookSessionMock).toHaveBeenCalledWith(root, "demo-book", undefined);
+    expect(createAndPersistBookSessionMock).toHaveBeenCalledWith(root, "demo-book", undefined, "book");
     await expect(response.json()).resolves.toMatchObject({
       session: { sessionId: "fresh-session", bookId: "demo-book", title: null },
     });
@@ -2430,7 +2432,14 @@ describe("createStudioServer daemon lifecycle", () => {
     const response = await app.request("http://localhost/api/v1/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instruction: "继续", activeBookId: "demo-book", sessionId: "agent-session-1" }),
+      body: JSON.stringify({
+        instruction: "继续",
+        activeBookId: "demo-book",
+        sessionId: "agent-session-1",
+        sessionKind: "book",
+        actionSource: "quick-action",
+        requestedIntent: "write_next",
+      }),
     });
 
     expect(response.status).toBe(200);
@@ -2447,6 +2456,31 @@ describe("createStudioServer daemon lifecycle", () => {
       root,
       "agent-session-1",
       expect.any(Array),
+      "继续",
+      { sessionKind: "book" },
+    );
+  });
+
+  it("does not direct-run write-next from ordinary free text", async () => {
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "继续",
+        activeBookId: "demo-book",
+        sessionId: "agent-session-1",
+        sessionKind: "book",
+        actionSource: "free-text",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(writeNextChapterMock).not.toHaveBeenCalled();
+    expect(runAgentSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ bookId: "demo-book", sessionKind: "book" }),
       "继续",
     );
   });
@@ -2498,6 +2532,8 @@ describe("createStudioServer daemon lifecycle", () => {
         instruction: "第3章把「Body」改成「Body updated」",
         activeBookId: "demo-book",
         sessionId: "agent-session-1",
+        sessionKind: "edit",
+        requestedIntent: "edit_artifact",
       }),
     });
 
@@ -2536,6 +2572,8 @@ describe("createStudioServer daemon lifecycle", () => {
       body: JSON.stringify({
         instruction: "把 covers/demo/cover-prompt.md 里的「标题字太小」改成「标题字压到最大」",
         sessionId: "agent-session-1",
+        sessionKind: "edit",
+        requestedIntent: "edit_artifact",
       }),
     });
 
@@ -2588,6 +2626,8 @@ describe("createStudioServer daemon lifecycle", () => {
       body: JSON.stringify({
         instruction: "把 packages/core/src/index.ts 里的「value」改成「other」",
         sessionId: "agent-session-1",
+        sessionKind: "edit",
+        requestedIntent: "edit_artifact",
       }),
     });
 
@@ -3091,7 +3131,7 @@ describe("createStudioServer daemon lifecycle", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       response: "你好！",
       session: { sessionId: "agent-session-1" },
     });

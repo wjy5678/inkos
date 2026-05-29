@@ -460,7 +460,7 @@ describe("runAgentSession cache — bookId switch", () => {
     }
   });
 
-  it("registers creation, short-fiction, cover, and play tools when no book is active", async () => {
+  it("exposes only confirmation proposals in general chat", async () => {
     const model = { provider: "x", id: "y", api: "anthropic-messages" } as any;
     const pipeline = {} as any;
 
@@ -470,9 +470,42 @@ describe("runAgentSession cache — bookId switch", () => {
     );
 
     expect(agentInstances[0].state.tools.map((tool: any) => tool.name)).toEqual([
+      "propose_action",
+    ]);
+  });
+
+  it("registers only architect delegation in book-create mode", async () => {
+    const model = { provider: "x", id: "y", api: "anthropic-messages" } as any;
+    const pipeline = {} as any;
+
+    await runAgentSession(
+      { sessionId: "book-create-session", bookId: null, sessionKind: "book-create", language: "zh", pipeline, projectRoot, model },
+      "hi",
+    );
+
+    expect(agentInstances[0].state.tools.map((tool: any) => tool.name)).toEqual([
       "sub_agent",
+    ]);
+  });
+
+  it("narrows tools in short and play modes", async () => {
+    const model = { provider: "x", id: "y", api: "anthropic-messages" } as any;
+    const pipeline = {} as any;
+
+    await runAgentSession(
+      { sessionId: "short-session", bookId: null, sessionKind: "short", language: "zh", pipeline, projectRoot, model },
+      "hi",
+    );
+    expect(agentInstances[0].state.tools.map((tool: any) => tool.name)).toEqual([
       "short_fiction_run",
       "generate_cover",
+    ]);
+
+    await runAgentSession(
+      { sessionId: "play-session", bookId: null, sessionKind: "play", language: "zh", pipeline, projectRoot, model },
+      "hi",
+    );
+    expect(agentInstances[1].state.tools.map((tool: any) => tool.name)).toEqual([
       "play_start",
       "play_step",
     ]);
@@ -489,10 +522,26 @@ describe("runAgentSession cache — bookId switch", () => {
 
     expect(agentInstances[0].state.tools.map((tool: any) => tool.name)).toEqual([
       "sub_agent",
-      "short_fiction_run",
       "generate_cover",
-      "play_start",
-      "play_step",
+      "read",
+      "write_truth_file",
+      "rename_entity",
+      "patch_chapter_text",
+      "grep",
+      "ls",
+    ]);
+  });
+
+  it("exposes only deterministic edit tools in edit mode", async () => {
+    const model = { provider: "x", id: "y", api: "anthropic-messages" } as any;
+    const pipeline = {} as any;
+
+    await runAgentSession(
+      { sessionId: "edit-session", bookId: "book-a", sessionKind: "edit", language: "zh", pipeline, projectRoot, model },
+      "hi",
+    );
+
+    expect(agentInstances[0].state.tools.map((tool: any) => tool.name)).toEqual([
       "read",
       "write_truth_file",
       "rename_entity",

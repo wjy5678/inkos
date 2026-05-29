@@ -258,12 +258,12 @@ export function buildBookCreatePayload(
   };
 }
 
-export function resolveDraftInstruction(input: string, hasDraft: boolean): string {
+export function resolveDraftInstruction(input: string, _hasDraft: boolean): string {
   const trimmed = input.trim();
   if (!trimmed) {
     return "";
   }
-  return hasDraft ? trimmed : `/new ${trimmed}`;
+  return trimmed;
 }
 
 export function canCreateFromDraft(draft?: BookCreationDraft): boolean {
@@ -338,12 +338,25 @@ function readSessionId(response: SessionResponse): string | null {
 export function buildBookCreateAgentRequest(
   instruction: string,
   sessionId: string,
-): { instruction: string; sessionId: string } {
+): {
+  instruction: string;
+  sessionId: string;
+  sessionKind: "book-create";
+  actionSource: "free-text" | "slash";
+  requestedIntent?: "create_book";
+} {
   const trimmedSessionId = sessionId.trim();
   if (!trimmedSessionId) {
     throw new Error("Book create session is not ready.");
   }
-  return { instruction, sessionId: trimmedSessionId };
+  const trimmedInstruction = instruction.trim();
+  return {
+    instruction,
+    sessionId: trimmedSessionId,
+    sessionKind: "book-create",
+    actionSource: trimmedInstruction.startsWith("/") ? "slash" : "free-text",
+    ...(trimmedInstruction === "/create" ? { requestedIntent: "create_book" as const } : {}),
+  };
 }
 
 export async function ensureBookCreateSessionId(
@@ -360,7 +373,7 @@ export async function ensureBookCreateSessionId(
     ?? (() => fetchJson<SessionResponse>("/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookId: null }),
+      body: JSON.stringify({ bookId: null, sessionKind: "book-create" }),
     }));
   const getStoredSessionId = options.getStoredSessionId ?? getBookCreateSessionId;
   const setStoredSessionId = options.setStoredSessionId ?? setBookCreateSessionId;
