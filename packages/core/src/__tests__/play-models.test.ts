@@ -167,4 +167,20 @@ describe("play models", () => {
     expect(mutation.entities.upsert).toHaveLength(1);
     expect(mutation.evidence.transitions[0]?.to).toBe("seen");
   });
+
+  it("normalizes array-shaped entities/edges and null reasons so a mutation does not crash play_step", () => {
+    const mutation = PlayMutationSchema.parse({
+      eventId: "evt-3",
+      turn: 3,
+      actionKind: "look",
+      summary: null,
+      entities: [{ id: "ev_x", type: "evidence", label: "线索", status: "seen", updatedEventId: "evt-3" }],
+      edges: [],
+      blockedReason: null,
+    });
+    expect(mutation.entities.upsert).toHaveLength(1);
+    expect(mutation.edges.upsert).toEqual([]);
+    expect(mutation.summary).toBe("");
+    expect(mutation.blockedReason).toBe("");
+  });
 });

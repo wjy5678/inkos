@@ -119,11 +119,24 @@ export const PlayEventSchema = z.object({
 export type PlayEventInput = z.input<typeof PlayEventSchema>;
 export type PlayEvent = z.infer<typeof PlayEventSchema>;
 
-export const PlayMutationSchema = z.object({
+// Models (especially via OpenAI-compatible gateways) drift the mutation shape: they sometimes
+// return a bare array instead of { upsert: [...] } / { transitions: [...] }, and emit null for
+// optional string fields. Normalize the common drift so a valid action doesn't crash play_step.
+function normalizePlayMutation(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const v = { ...(value as Record<string, unknown>) };
+  if (Array.isArray(v.entities)) v.entities = { upsert: v.entities };
+  if (Array.isArray(v.edges)) v.edges = { upsert: v.edges };
+  if (Array.isArray(v.stateSlots)) v.stateSlots = { upsert: v.stateSlots };
+  if (Array.isArray(v.evidence)) v.evidence = { transitions: v.evidence };
+  return v;
+}
+
+export const PlayMutationSchema = z.preprocess(normalizePlayMutation, z.object({
   eventId: z.string().min(1),
   turn: z.number().int().min(0),
   actionKind: PlayActionKindSchema,
-  summary: z.string().default(""),
+  summary: z.string().nullish().transform((v) => v ?? ""),
   entities: z.object({
     upsert: z.array(PlayEntitySchema).default([]),
   }).default({ upsert: [] }),
@@ -142,8 +155,8 @@ export const PlayMutationSchema = z.object({
     transitions: z.array(PlayEvidenceTransitionSchema).default([]),
   }).default({ transitions: [] }),
   blocked: z.boolean().default(false),
-  blockedReason: z.string().default(""),
+  blockedReason: z.string().nullish().transform((v) => v ?? ""),
   notes: z.array(z.string()).default([]),
-});
+}));
 export type PlayMutationInput = z.input<typeof PlayMutationSchema>;
 export type PlayMutation = z.infer<typeof PlayMutationSchema>;
