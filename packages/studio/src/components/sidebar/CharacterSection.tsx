@@ -4,6 +4,7 @@ import { useChatStore } from "../../store/chat";
 import { fetchJson } from "../../hooks/use-api";
 import { SidebarCard } from "./SidebarCard";
 import { cn } from "../../lib/utils";
+import { roleFromPath, type RoleRef } from "../../lib/truth-display";
 
 interface CharacterInfo {
   name: string;
@@ -49,6 +50,32 @@ function getRoleColor(role: string): string {
     if (lower.includes(key)) return color;
   }
   return "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400";
+}
+
+const TIER_BADGE: Record<RoleRef["tier"], { label: string; color: string }> = {
+  major: { label: "主要", color: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  minor: { label: "次要", color: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
+};
+
+// Phase 5 layout: one file per character under roles/. Each entry opens the
+// full (humanized) character sheet — no raw matrix parsing needed.
+function RoleEntry({ role }: { readonly role: RoleRef }) {
+  const openArtifact = useChatStore((s) => s.openArtifact);
+  const badge = TIER_BADGE[role.tier];
+  return (
+    <button
+      onClick={() => openArtifact(role.path)}
+      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors text-left"
+    >
+      <Users size={14} className="shrink-0 text-muted-foreground/60" />
+      <span className="text-sm font-medium text-foreground font-['SimSun','Songti_SC','STSong',serif] flex-1 truncate">
+        {role.name}
+      </span>
+      <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full shrink-0", badge.color)}>
+        {badge.label}
+      </span>
+    </button>
+  );
 }
 
 function CharacterCard({ char }: { readonly char: CharacterInfo }) {
@@ -100,29 +127,59 @@ interface CharacterSectionProps {
 }
 
 export function CharacterSection({ bookId }: CharacterSectionProps) {
-  const [characters, setCharacters] = useState<CharacterInfo[]>([]);
+  const [roles, setRoles] = useState<ReadonlyArray<RoleRef>>([]);
+  const [legacyChars, setLegacyChars] = useState<CharacterInfo[]>([]);
   const bookDataVersion = useChatStore((s) => s.bookDataVersion);
 
   useEffect(() => {
-    fetchJson<{ content: string | null }>(`/books/${bookId}/truth/character_matrix.md`)
-      .then((data) => {
-        if (data.content) {
-          setCharacters(parseCharacterMatrix(data.content));
-        } else {
-          setCharacters([]);
+    let cancelled = false;
+    setRoles([]);
+    setLegacyChars([]);
+
+    fetchJson<{ files: ReadonlyArray<{ name: string }> }>(`/books/${bookId}/truth`)
+      .then(async (data) => {
+        if (cancelled) return;
+        const roleRefs = data.files
+          .map((f) => roleFromPath(f.name))
+          .filter((r): r is RoleRef => r !== null)
+          .sort((a, b) =>
+            a.tier === b.tier ? a.name.localeCompare(b.name) : a.tier === "major" ? -1 : 1,
+          );
+
+        // Phase 5 books expose one file per character under roles/.
+        if (roleRefs.length > 0) {
+          setRoles(roleRefs);
+          return;
+        }
+
+        // Pre-Phase-5 books only have the flat character_matrix.md table.
+        const matrix = await fetchJson<{ content: string | null }>(
+          `/books/${bookId}/truth/character_matrix.md`,
+        ).catch(() => ({ content: null }));
+        if (!cancelled && matrix.content) {
+          setLegacyChars(parseCharacterMatrix(matrix.content));
         }
       })
-      .catch(() => setCharacters([]));
+      .catch(() => {
+        if (!cancelled) {
+          setRoles([]);
+          setLegacyChars([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [bookId, bookDataVersion]);
 
-  if (characters.length === 0) return null;
+  if (roles.length === 0 && legacyChars.length === 0) return null;
 
   return (
     <SidebarCard title="角色">
       <div className="space-y-1.5">
-        {characters.map((char) => (
-          <CharacterCard key={char.name} char={char} />
-        ))}
+        {roles.length > 0
+          ? roles.map((role) => <RoleEntry key={role.path} role={role} />)
+          : legacyChars.map((char) => <CharacterCard key={char.name} char={char} />)}
       </div>
     </SidebarCard>
   );

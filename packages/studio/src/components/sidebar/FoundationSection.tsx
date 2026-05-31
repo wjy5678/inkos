@@ -3,21 +3,15 @@ import { FileText } from "lucide-react";
 import { useChatStore } from "../../store/chat";
 import { fetchJson } from "../../hooks/use-api";
 import { SidebarCard } from "./SidebarCard";
-
-const FOUNDATION_FILES: ReadonlyArray<{ file: string; label: string }> = [
-  { file: "story_bible.md", label: "世界观设定" },
-  { file: "volume_outline.md", label: "卷纲规划" },
-  { file: "book_rules.md", label: "叙事规则" },
-  { file: "current_state.md", label: "状态卡" },
-  { file: "pending_hooks.md", label: "伏笔池" },
-  { file: "subplot_board.md", label: "支线进度" },
-  { file: "emotional_arcs.md", label: "感情线" },
-  { file: "character_matrix.md", label: "角色矩阵" },
-];
+import { FOUNDATION_FILE_LABELS, FOUNDATION_FILE_ORDER } from "../../lib/truth-display";
 
 interface TruthFileInfo {
   name: string;
   size: number;
+  // Pre-Phase-5 compat shims (story_bible.md / book_rules.md) on a new-layout
+  // book are tagged legacy by the API; those are deprecated pointers, not real
+  // content, so they are hidden from the foundation list.
+  legacy?: boolean;
 }
 
 interface FoundationSectionProps {
@@ -35,9 +29,9 @@ export function FoundationSection({ bookId }: FoundationSectionProps) {
       .catch(() => setFiles([]));
   }, [bookId, bookDataVersion]);
 
-  const available = FOUNDATION_FILES.filter((f) =>
-    files.some((tf) => tf.name === f.file),
-  );
+  const available = files
+    .filter((f) => !f.legacy && FOUNDATION_FILE_LABELS[f.name] !== undefined)
+    .sort((a, b) => FOUNDATION_FILE_ORDER.indexOf(a.name) - FOUNDATION_FILE_ORDER.indexOf(b.name));
 
   if (available.length === 0) return null;
 
@@ -45,13 +39,13 @@ export function FoundationSection({ bookId }: FoundationSectionProps) {
     <SidebarCard title="核心文件">
       <ul className="space-y-1">
         {available.map((item) => (
-          <li key={item.file}>
+          <li key={item.name}>
             <button
-              onClick={() => openArtifact(item.file)}
+              onClick={() => openArtifact(item.name)}
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors font-['SimSun','Songti_SC','STSong',serif]"
             >
               <FileText size={14} className="shrink-0 text-muted-foreground/60" />
-              <span className="truncate">{item.label}</span>
+              <span className="truncate">{FOUNDATION_FILE_LABELS[item.name]}</span>
             </button>
           </li>
         ))}
