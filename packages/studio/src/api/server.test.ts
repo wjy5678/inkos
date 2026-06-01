@@ -240,6 +240,7 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     appendBookSessionMessage: appendBookSessionMessageMock,
     appendManualSessionMessages: appendManualSessionMessagesMock,
     isNewLayoutBook: vi.fn(async () => false),
+    isBookFoundationComplete: actual.isBookFoundationComplete,
     tryParseBookRulesFrontmatter: actual.tryParseBookRulesFrontmatter,
     renameBookSession: renameBookSessionMock,
     deleteBookSession: deleteBookSessionMock,
@@ -2099,6 +2100,41 @@ describe("createStudioServer daemon lifecycle", () => {
       status: "error",
       error: "INKOS_LLM_API_KEY not set",
     });
+  });
+
+  it("create-status reports ready from disk when the foundation is complete but no in-memory entry exists", async () => {
+    // A long architect run (or a server restart) drops the in-memory status; on
+    // success it is deleted outright. Without the disk fallback this returned a
+    // bare 404 that a polling client reads as "creation failed".
+    const bookDir = join(root, "books", "disk-ready");
+    await mkdir(join(bookDir, "story", "outline"), { recursive: true });
+    await mkdir(join(bookDir, "story", "roles", "主要角色"), { recursive: true });
+    await writeFile(join(bookDir, "book.json"), "{}");
+    await writeFile(join(bookDir, "story", "outline", "story_frame.md"), "frame");
+    await writeFile(join(bookDir, "story", "outline", "volume_map.md"), "map");
+    await writeFile(join(bookDir, "story", "book_rules.md"), "rules");
+    await writeFile(join(bookDir, "story", "pending_hooks.md"), "hooks");
+    await writeFile(join(bookDir, "story", "roles", "主要角色", "lead.md"), "lead");
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const status = await app.request("http://localhost/api/v1/books/disk-ready/create-status");
+    expect(status.status).toBe(200);
+    await expect(status.json()).resolves.toMatchObject({ status: "ready" });
+  });
+
+  it("create-status still 404s when neither an in-memory entry nor a complete foundation exists", async () => {
+    const bookDir = join(root, "books", "half-built");
+    await mkdir(join(bookDir, "story", "outline"), { recursive: true });
+    await writeFile(join(bookDir, "book.json"), "{}");
+    await writeFile(join(bookDir, "story", "outline", "story_frame.md"), "frame"); // missing the rest
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const status = await app.request("http://localhost/api/v1/books/half-built/create-status");
+    expect(status.status).toBe(404);
   });
 
   it("surfaces LLM config errors during create instead of masking them as internal errors", async () => {

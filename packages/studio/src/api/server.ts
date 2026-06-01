@@ -1577,10 +1577,18 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   app.get("/api/v1/books/:id/create-status", async (c) => {
     const id = c.req.param("id");
     const status = bookCreateStatus.get(id);
-    if (!status) {
-      return c.json({ status: "missing" }, 404);
+    if (status) {
+      return c.json(status);
     }
-    return c.json(status);
+    // No in-memory entry. On success the entry is deleted, and a long architect
+    // run (or a server restart) can also drop it — so a bare 404 is ambiguous
+    // ("done" vs "never existed"). Check disk: if the foundation is fully
+    // written, the book really is ready; report that truthfully.
+    const { isBookFoundationComplete } = await import("@actalk/inkos-core");
+    if (await isBookFoundationComplete(state.bookDir(id))) {
+      return c.json({ status: "ready" });
+    }
+    return c.json({ status: "missing" }, 404);
   });
 
   // --- Chapters ---

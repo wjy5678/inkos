@@ -30,6 +30,44 @@ export async function isNewLayoutBook(bookDir: string): Promise<boolean> {
   }
 }
 
+/**
+ * Whether a book's architect foundation is fully written on disk. A long
+ * architect run (especially on a stronger model) can outlive the in-memory
+ * create-status tracking — or the server can restart mid-run — leaving the
+ * status endpoint with no entry. Checking disk lets create-status answer
+ * "ready" truthfully instead of an ambiguous 404 that reads as "failed".
+ *
+ * "Complete" mirrors the five sections the architect must emit
+ * (story_frame / volume_map / book_rules / pending_hooks / roles); a half-built
+ * book that is missing any of these is NOT ready.
+ */
+export async function isBookFoundationComplete(bookDir: string): Promise<boolean> {
+  const required = [
+    join(bookDir, "book.json"),
+    join(bookDir, "story", "outline", "story_frame.md"),
+    join(bookDir, "story", "outline", "volume_map.md"),
+    join(bookDir, "story", "book_rules.md"),
+    join(bookDir, "story", "pending_hooks.md"),
+  ];
+  for (const path of required) {
+    try {
+      await access(path);
+    } catch {
+      return false;
+    }
+  }
+  // At least one character sheet under either locale's "major roles" dir.
+  for (const tier of ["主要角色", "major"]) {
+    try {
+      const entries = await readdir(join(bookDir, "story", "roles", tier));
+      if (entries.some((file) => file.endsWith(".md"))) return true;
+    } catch {
+      // Try the other locale's directory.
+    }
+  }
+  return false;
+}
+
 async function readOr(path: string, fallback: string): Promise<string> {
   try {
     return await readFile(path, "utf-8");

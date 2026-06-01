@@ -374,7 +374,7 @@ export { buildFanficCanonSection, buildCharacterVoiceProfiles, buildFanficModeIn
 export * from "./prompts/index.js";
 
 // Utils
-export { isNewLayoutBook } from "./utils/outline-paths.js";
+export { isNewLayoutBook, isBookFoundationComplete } from "./utils/outline-paths.js";
 export { fetchUrl, searchWeb } from "./utils/web-search.js";
 export { filterHooks, filterSummaries, filterSubplots, filterEmotionalArcs, filterCharacterMatrix } from "./utils/context-filter.js";
 export { extractPOVFromOutline, filterMatrixByPOV, filterHooksByPOV } from "./utils/pov-filter.js";
