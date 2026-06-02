@@ -185,6 +185,69 @@ describe("developBookDraft – uses chatWithTools", () => {
     });
   });
 
+  it("fills editable length defaults and never blocks creation on missing length", async () => {
+    // The LLM returns the six story-core fields but no length — length is a run
+    // parameter, so the draft should default to 200/3000 and still be ready.
+    mockChatWithTools.mockResolvedValueOnce({
+      content: "已生成草案。",
+      toolCalls: [
+        {
+          id: "call_2",
+          name: "create_book",
+          arguments: JSON.stringify({
+            title: "夜港账本",
+            genre: "urban",
+            platform: "tomato",
+            worldPremise: "近未来港口城，账本牵出多方势力。",
+            protagonist: "林砚，水货账房出身。",
+            conflictCore: "洗白与旧债回潮的对撞。",
+            readyToCreate: true,
+          }),
+        },
+      ],
+    });
+
+    const tools = createInteractionToolsFromDeps(fakePipeline as never, fakeState as never);
+    const result = await tools.developBookDraft?.("我想写港风商战", undefined) as Record<string, unknown>;
+    const details = (result as { __interaction: { details: Record<string, unknown> } }).__interaction.details;
+    const draft = details.creationDraft as Record<string, unknown>;
+
+    expect(draft.targetChapters).toBe(200);
+    expect(draft.chapterWordCount).toBe(3000);
+    expect(draft.readyToCreate).toBe(true);
+    expect(draft.missingFields).not.toContain("targetChapters");
+    expect(draft.missingFields).not.toContain("chapterWordCount");
+  });
+
+  it("keeps a draft NOT ready while a story-core field (worldPremise) is missing, even with length defaulted", async () => {
+    mockChatWithTools.mockResolvedValueOnce({
+      content: "还差世界观。",
+      toolCalls: [
+        {
+          id: "call_3",
+          name: "create_book",
+          arguments: JSON.stringify({
+            title: "夜港账本",
+            genre: "urban",
+            platform: "tomato",
+            protagonist: "林砚。",
+            conflictCore: "洗白与旧债回潮的对撞。",
+            readyToCreate: true, // LLM over-claims; deterministic gate must override
+          }),
+        },
+      ],
+    });
+
+    const tools = createInteractionToolsFromDeps(fakePipeline as never, fakeState as never);
+    const result = await tools.developBookDraft?.("我想写港风商战", undefined) as Record<string, unknown>;
+    const details = (result as { __interaction: { details: Record<string, unknown> } }).__interaction.details;
+    const draft = details.creationDraft as Record<string, unknown>;
+
+    expect(draft.targetChapters).toBe(200);
+    expect(draft.readyToCreate).toBe(false);
+    expect(draft.missingFields).toContain("worldPremise");
+  });
+
   it("returns fallback when no LLM is configured", async () => {
     const noLlmPipeline = {
       config: {},

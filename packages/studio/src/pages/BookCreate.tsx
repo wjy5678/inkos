@@ -274,6 +274,10 @@ export function resolveDraftInstruction(input: string, _hasDraft: boolean): stri
   return trimmed;
 }
 
+// The story core that must be present to create. Length
+// (targetChapters/chapterWordCount) is a run parameter with editable defaults,
+// so it never gates creation — it's only shown in the basics stage. Mirrors
+// missingCoreDraftFields in core/interaction/project-tools.ts.
 export function canCreateFromDraft(draft?: BookCreationDraft): boolean {
   if (!draft) {
     return false;
@@ -282,8 +286,6 @@ export function canCreateFromDraft(draft?: BookCreationDraft): boolean {
     draft.title?.trim()
       && draft.genre?.trim()
       && draft.platform?.trim()
-      && typeof draft.targetChapters === "number"
-      && typeof draft.chapterWordCount === "number"
       && draft.worldPremise?.trim()
       && draft.protagonist?.trim()
       && draft.conflictCore?.trim(),

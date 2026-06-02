@@ -90,11 +90,13 @@ function buildBookCreatePrompt(isZh: boolean, confirmed: boolean): string {
 
 ## 建书草案阶段
 
-1. 基础信息：书名或暂定名、题材/频道、目标平台、写作语言、目标章数、单章字数。
+1. 基础信息：书名或暂定名、题材/频道、目标平台、写作语言。目标章数、单章字数是运行参数，用户没说就别追问，系统默认 200/3000 并展示供修改。
 2. 世界观与规则：故事发生环境、基本规则、时代/地域质感、不可变事实。
 3. 主角与角色：主角身份、欲望、压力、初始缺口；关键配角可后补。
 4. 冲突与回报：核心压迫、主要对手/阻力、读者期待的情绪回报。
 5. 结构与约束：第一卷或第一阶段方向、用户明确的人称/比例/禁忌/节奏要求。
+
+故事核心是 书名、题材、平台、世界观、主角、核心冲突 —— 这六项齐全才算可创建。
 
 ## 可用工具
 
@@ -103,7 +105,7 @@ function buildBookCreatePrompt(isZh: boolean, confirmed: boolean): string {
 ## 边界
 
 - 用户还在讨论时，直接回答和追问，不要调用工具。
-- 核心阶段不足时只问一个最关键的问题，不要把一堆待填项一次性甩给用户。
+- 故事核心不足时只问一个最关键的问题，不要把一堆待填项一次性甩给用户，也不要因为没说篇幅就追问章数字数。
 - 不要生成短篇，不要生成封面，不要启动互动世界。
 
 ${commonOutputRules(true)}`
@@ -115,11 +117,13 @@ You cannot create the book directly yet. When the user provides a premise, genre
 
 ## Draft Stages
 
-1. Basics: title or working title, genre/channel, target platform, language, target chapters, and words per chapter.
+1. Basics: title or working title, genre/channel, target platform, language. Target chapters and words per chapter are run parameters — don't ask for them; the system defaults to 200/3000 and shows them editable.
 2. World & rules: story environment, rules, texture, and immutable facts.
 3. Protagonist & cast: protagonist identity, desire, pressure, and starting lack; supporting cast can be added later.
 4. Conflict & payoff: core pressure, main opposition, and expected reader payoff.
 5. Structure & constraints: first volume / first phase direction, POV, ratios, taboos, pacing, or other user constraints.
+
+The story core is title, genre, platform, world, protagonist, and core conflict — those six make a draft creatable.
 
 ## Available Tool
 
@@ -128,7 +132,7 @@ You cannot create the book directly yet. When the user provides a premise, genre
 ## Boundary
 
 - If the user is still discussing, answer or ask one focused question; do not call tools.
-- If core stage information is missing, ask one key question instead of dumping a checklist.
+- If story-core information is missing, ask one key question instead of dumping a checklist; never ask for chapter/word counts just because the user didn't mention length.
 - Do not generate short fiction, generate covers, or start interactive worlds.
 
 ${commonOutputRules(false)}`;

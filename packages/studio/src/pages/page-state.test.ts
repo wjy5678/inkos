@@ -230,6 +230,21 @@ describe("canCreateFromDraft", () => {
     })).toBe(true);
   });
 
+  it("creates from the six story-core fields without requiring length", () => {
+    // Length is a run parameter with editable defaults — its absence must not block.
+    expect(canCreateFromDraft({
+      concept: "港风商战悬疑",
+      title: "夜港账本",
+      genre: "urban",
+      platform: "tomato",
+      worldPremise: "近未来港口城，账本牵出多方势力。",
+      protagonist: "林砚，水货账房出身，擅长记账和看人。",
+      conflictCore: "洗白与旧债回潮的对撞。",
+      readyToCreate: false,
+      missingFields: [],
+    })).toBe(true);
+  });
+
   it("rejects incomplete drafts", () => {
     expect(canCreateFromDraft({
       concept: "港风商战悬疑",

@@ -338,8 +338,8 @@ const CREATE_BOOK_TOOL: ToolDefinition = {
       title: { type: "string", description: "书名" },
       genre: { type: "string", description: "题材标识，如 xuanhuan, urban, romance, scifi, mystery" },
       platform: { type: "string", enum: ["tomato", "qidian", "feilu", "other"], description: "发布平台" },
-      targetChapters: { type: "number", description: "目标章数，默认 200" },
-      chapterWordCount: { type: "number", description: "每章字数，默认 3000" },
+      targetChapters: { type: "number", description: "目标章数。运行参数，用户没说就别追问，系统默认 200 并展示在草案里供修改。" },
+      chapterWordCount: { type: "number", description: "每章字数。运行参数，用户没说就别追问，系统默认 3000 并展示在草案里供修改。" },
       language: { type: "string", enum: ["zh", "en"], description: "写作语言，默认 zh" },
       brief: { type: "string", description: "面向读者的故事简介。不要把所有设定混成唯一字段；能拆开的内容要分别写入下面字段。" },
       worldPremise: { type: "string", description: "世界观、故事发生环境、基本规则。" },
@@ -355,9 +355,9 @@ const CREATE_BOOK_TOOL: ToolDefinition = {
       missingFields: {
         type: "array",
         items: { type: "string" },
-        description: "仍缺的字段 key，例如 worldPremise, protagonist, conflictCore, targetChapters。",
+        description: "仍缺的故事核心字段 key，例如 worldPremise, protagonist, conflictCore。不要写 targetChapters/chapterWordCount，篇幅有默认值不算缺。",
       },
-      readyToCreate: { type: "boolean", description: "只有核心阶段信息齐全时才为 true。" },
+      readyToCreate: { type: "boolean", description: "只有故事核心信息齐全时才为 true。篇幅缺失不影响。" },
     },
   },
 };
@@ -367,10 +367,10 @@ const BOOK_DRAFT_SYSTEM_PROMPT = [
   "",
   "规则：",
   "1. 不要把世界观、主角、冲突、卷纲全部塞进 brief；能拆开的内容必须分别写入 worldPremise、protagonist、conflictCore、volumeOutline 等字段。",
-  "2. 按阶段收集：基础信息(title/genre/platform/language/targetChapters/chapterWordCount) -> 世界观(worldPremise/settingNotes) -> 角色(protagonist/supportingCast) -> 冲突(conflictCore/blurb/authorIntent) -> 结构(volumeOutline/currentFocus/constraints)。",
+  "2. 按阶段收集：基础信息(title/genre/platform/language) -> 世界观(worldPremise/settingNotes) -> 角色(protagonist/supportingCast) -> 冲突(conflictCore/blurb/authorIntent) -> 结构(volumeOutline/currentFocus/constraints)。targetChapters/chapterWordCount 是运行参数，用户没说就别追问，系统会默认 200/3000。",
   "3. 用户只给一部分信息时，只更新这部分，不要为了 readyToCreate 编造剩余阶段。",
   "4. 信息还不够时，把 missingFields 写清楚，并在 nextQuestion 里只问一个最关键的问题。",
-  "5. 只有 title、genre、platform、targetChapters、chapterWordCount、worldPremise、protagonist、conflictCore 都明确时，readyToCreate 才能为 true。",
+  "5. 只有 title、genre、platform、worldPremise、protagonist、conflictCore 都明确时，readyToCreate 才能为 true。篇幅不是必填项。",
   "6. 如果用户后续要求修改某些字段，重新调用 create_book 工具，只更新被提到的字段，其余保持不变。",
   "7. 不要只回复文字讨论——必须调用 create_book 工具输出结构化草案。",
 ].join("\n");
@@ -469,13 +469,21 @@ function applyFieldsToDraft(
   return draft;
 }
 
+// Length is a run parameter, not a story-core field: the user shouldn't be
+// blocked on "how many chapters" the way they're blocked on "who's the
+// protagonist". We fill editable defaults instead of treating them as
+// must-ask fields. These mirror the BookSchema defaults in models/book.ts.
+const DEFAULT_DRAFT_TARGET_CHAPTERS = 200;
+const DEFAULT_DRAFT_CHAPTER_WORD_COUNT = 3000;
+
+// The story-core fields the user MUST supply before a book can be created.
+// Length (targetChapters/chapterWordCount) is intentionally absent — it's
+// defaulted in finalizeBookDraft and shown editable in the draft summary.
 function missingCoreDraftFields(draft: BookCreationDraft): string[] {
   const missing: string[] = [];
   if (!draft.title?.trim()) missing.push("title");
   if (!draft.genre?.trim()) missing.push("genre");
   if (!draft.platform?.trim()) missing.push("platform");
-  if (typeof draft.targetChapters !== "number") missing.push("targetChapters");
-  if (typeof draft.chapterWordCount !== "number") missing.push("chapterWordCount");
   if (!draft.worldPremise?.trim()) missing.push("worldPremise");
   if (!draft.protagonist?.trim()) missing.push("protagonist");
   if (!draft.conflictCore?.trim()) missing.push("conflictCore");
@@ -483,12 +491,21 @@ function missingCoreDraftFields(draft: BookCreationDraft): string[] {
 }
 
 function finalizeBookDraft(draft: BookCreationDraft): BookCreationDraft {
-  const coreMissing = missingCoreDraftFields(draft);
-  const missingFields = Array.from(new Set([...coreMissing, ...(draft.missingFields ?? [])]));
-  return {
+  // Fill editable length defaults so the draft always carries a concrete,
+  // user-visible run parameter rather than building from a hidden fallback.
+  const withDefaults: BookCreationDraft = {
     ...draft,
+    targetChapters:
+      typeof draft.targetChapters === "number" ? draft.targetChapters : DEFAULT_DRAFT_TARGET_CHAPTERS,
+    chapterWordCount:
+      typeof draft.chapterWordCount === "number" ? draft.chapterWordCount : DEFAULT_DRAFT_CHAPTER_WORD_COUNT,
+  };
+  const coreMissing = missingCoreDraftFields(withDefaults);
+  const missingFields = Array.from(new Set([...coreMissing, ...(withDefaults.missingFields ?? [])]));
+  return {
+    ...withDefaults,
     missingFields,
-    readyToCreate: draft.readyToCreate === true && coreMissing.length === 0,
+    readyToCreate: withDefaults.readyToCreate === true && coreMissing.length === 0,
   };
 }
 
@@ -547,8 +564,6 @@ export function createInteractionToolsFromDeps(
                   "title",
                   "genre",
                   "platform",
-                  "targetChapters",
-                  "chapterWordCount",
                   "worldPremise",
                   "protagonist",
                   "conflictCore",
