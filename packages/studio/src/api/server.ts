@@ -277,6 +277,10 @@ function hasSuccessfulToolExec(
   );
 }
 
+function hasSuccessfulToolResult(execs: ReadonlyArray<CollectedToolExec>): boolean {
+  return execs.some((exec) => exec.status === "completed" && !isLikelyFailedToolResult(exec));
+}
+
 function normalizeStudioSessionKind(value: unknown, fallback: SessionKind): SessionKind {
   if (value === undefined || value === null || value === "") return fallback;
   const parsed = SessionKindSchema.safeParse(value);
@@ -3642,7 +3646,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
         await refreshBookSessionFromTranscript();
         const createdBookId = await finalizeCreatedBook();
-        if (requestedIntent || createdBookId) {
+        if (requestedIntent || createdBookId || hasSuccessfulToolResult(collectedToolExecs)) {
           const responseSessionKind = bookSession.sessionKind ?? sessionKind;
           broadcast("agent:complete", { instruction, activeBookId, sessionId: bookSession.sessionId, sessionKind: responseSessionKind });
           return c.json({

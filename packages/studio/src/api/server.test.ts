@@ -3372,6 +3372,66 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(chatCompletionMock).not.toHaveBeenCalled();
   });
 
+  it("accepts an empty final agent response after a successful play_step tool result", async () => {
+    loadBookSessionMock.mockResolvedValue({
+      sessionId: "agent-session-1",
+      bookId: null,
+      sessionKind: "play",
+      playMode: "open",
+      title: null,
+      messages: [],
+      events: [],
+      draftRounds: [],
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    runAgentSessionMock.mockImplementationOnce(async (config: { onEvent?: (event: unknown) => void }) => {
+      config.onEvent?.({
+        type: "tool_execution_start",
+        toolCallId: "play-step-1",
+        toolName: "play_step",
+        args: { input: "检查封条" },
+      });
+      config.onEvent?.({
+        type: "tool_execution_end",
+        toolCallId: "play-step-1",
+        toolName: "play_step",
+        isError: false,
+        result: {
+          content: [{ type: "text", text: "Play advanced." }],
+          details: { kind: "play_turn_advanced", worldId: "world-1", runId: "main" },
+        },
+      });
+      return {
+        responseText: "",
+        messages: [{ role: "user", content: "检查封条" }],
+      };
+    });
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "检查封条",
+        sessionId: "agent-session-1",
+        sessionKind: "play",
+        playMode: "open",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      response: "",
+      session: {
+        sessionId: "agent-session-1",
+        sessionKind: "play",
+      },
+    });
+    expect(chatCompletionMock).not.toHaveBeenCalled();
+  });
+
   it("migrates and exposes a book created by architect even when the final agent text is empty", async () => {
     const orphanSession = {
       sessionId: "agent-session-1",

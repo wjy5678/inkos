@@ -240,13 +240,17 @@ function localAssistantStopStream(model: Model<Api>): AssistantMessageEventStrea
   return stream;
 }
 
-function isTerminalProposalTail(messages: AgentMessage[]): boolean {
+function isTerminalToolResultTail(messages: AgentMessage[]): boolean {
   const last = messages.at(-1);
   if (!last || typeof last !== "object" || !("role" in last)) return false;
   if ((last as { role?: unknown }).role !== "toolResult") return false;
   const toolName = (last as { toolName?: unknown }).toolName;
   const isError = (last as { isError?: unknown }).isError;
-  return toolName === "propose_action" && isError !== true;
+  return (
+    toolName === "propose_action"
+    || toolName === "play_start"
+    || toolName === "play_step"
+  ) && isError !== true;
 }
 
 async function runInAgentSessionQueue<T>(
@@ -765,7 +769,7 @@ async function runAgentSessionUnlocked(
       : initialMessages && initialMessages.length > 0
         ? plainToAgentMessages(initialMessages)
         : [];
-    let terminalProposalTail = false;
+    let terminalToolResultTail = false;
     const agent = new Agent({
       initialState: {
         model,
@@ -788,12 +792,12 @@ async function runAgentSessionUnlocked(
       },
       transformContext: createBookContextTransform(bookId, projectRoot, { onContextCompression }),
       convertToLlm: (messages) => {
-        terminalProposalTail = isTerminalProposalTail(messages);
+        terminalToolResultTail = isTerminalToolResultTail(messages);
         return convertAgentMessagesForModel(messages, model);
       },
       streamFn: (streamModel, context, options) => {
-        if (terminalProposalTail) {
-          terminalProposalTail = false;
+        if (terminalToolResultTail) {
+          terminalToolResultTail = false;
           return localAssistantStopStream(streamModel);
         }
         return guardedStreamSimple(streamModel, context, options);
