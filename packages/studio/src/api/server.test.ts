@@ -724,6 +724,19 @@ describe("createStudioServer daemon lifecycle", () => {
     });
   });
 
+  it("returns a structured config error when inkos.json is corrupt", async () => {
+    await writeFile(join(root, "inkos.json"), "{ this is not valid json", "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/project");
+    expect(response.status).toBe(500);
+    const body = await response.json() as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("PROJECT_CONFIG_INVALID");
+    expect(body.error.message).toContain("inkos.json");
+  });
+
   it("reloads latest llm config for doctor checks without restarting the studio server", async () => {
     const startupConfig = {
       ...cloneProjectConfig(),

@@ -2678,9 +2678,19 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   // --- Project info ---
 
   app.get("/api/v1/project", async (c) => {
-    const currentConfig = await loadCurrentProjectConfig({ requireApiKey: false });
-    // Check if language was explicitly set in inkos.json (not just the schema default)
-    const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
+    let currentConfig: ProjectConfig;
+    let raw: Record<string, unknown>;
+    try {
+      currentConfig = await loadCurrentProjectConfig({ requireApiKey: false });
+      // Check if language was explicitly set in inkos.json (not just the schema default)
+      raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8")) as Record<string, unknown>;
+    } catch (error) {
+      throw new ApiError(
+        500,
+        "PROJECT_CONFIG_INVALID",
+        `Failed to load inkos.json: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     const languageExplicit = "language" in raw && raw.language !== "";
 
     return c.json({

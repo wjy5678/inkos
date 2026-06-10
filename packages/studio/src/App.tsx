@@ -39,12 +39,20 @@ export function isBookCreateChatRoute(route: HashRoute): boolean {
   return route.page === "book-create";
 }
 
+export function deriveStartupGate(input: {
+  readonly ready: boolean;
+  readonly projectError: string | null;
+}): "ready" | "loading" | "error" {
+  if (input.ready) return "ready";
+  return input.projectError ? "error" : "loading";
+}
+
 export function App() {
   const { route, setRoute } = useHashRoute();
   const sse = useSSE();
   const { theme, setTheme } = useTheme();
   const { t, lang: currentLang } = useI18n();
-  const { data: project, refetch: refetchProject } = useApi<{ language: string; languageExplicit: boolean }>("/project");
+  const { data: project, error: projectError, refetch: refetchProject } = useApi<{ language: string; languageExplicit: boolean }>("/project");
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [ready, setReady] = useState(false);
 
@@ -95,7 +103,32 @@ export function App() {
         ? "services"
         : route.page;
 
-  if (!ready) {
+  const startupGate = deriveStartupGate({ ready, projectError });
+
+  if (startupGate === "error") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="max-w-md w-full rounded-2xl border border-destructive/30 bg-destructive/5 p-6 space-y-4">
+          <div>
+            <h1 className="text-lg font-semibold text-destructive">无法加载项目配置 / Failed to load project config</h1>
+            <p className="mt-2 text-sm text-muted-foreground break-all">{projectError}</p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            请检查项目根目录下的 inkos.json 是否存在且为合法 JSON，然后重试。
+          </p>
+          <button
+            type="button"
+            onClick={() => refetchProject()}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            重试 / Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (startupGate === "loading") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
