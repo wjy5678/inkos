@@ -4904,6 +4904,20 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     return c.json(checks);
   });
 
+  app.get("/api/v1/projects/:id/story-graph", async (c) => {
+    const id = c.req.param("id");
+    const graphPath = join(root, "interactive-films", id, "story-graph.json");
+    try {
+      const raw = await readFile(graphPath, "utf-8");
+      return c.json(JSON.parse(raw));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return c.json({ error: { code: "NOT_FOUND", message: `story graph not found for ${id}` } }, 404);
+      }
+      throw error;
+    }
+  });
+
   return app;
 }
 
