@@ -790,6 +790,7 @@ async function executeConfirmedProductionAction(args: {
   readonly pipeline: PipelineRunner;
   readonly root: string;
   readonly sessionId: string;
+  readonly bookId: string | null;
   readonly streamSessionId: string;
   readonly instruction: string;
   readonly requestedIntent: RequestedIntent;
@@ -933,7 +934,8 @@ async function executeConfirmedProductionAction(args: {
     };
   } else if (args.requestedIntent === "draft_structure") {
     const payload = actionPayload?.draftStructure;
-    const projectId = payload?.projectId ?? args.sessionId;
+    const projectId = payload?.projectId ?? args.bookId;
+    if (!projectId) throw new ApiError(400, "INVALID_ID", "interactive-film action requires a project id (bookId)");
     const agentCtx = args.pipeline.createAgentContext("film-authoring", projectId);
     const deps = filmLLMDepsFromClient(agentCtx.client, agentCtx.model);
     tool = createDraftStructureTool(args.root, projectId, deps);
@@ -945,7 +947,8 @@ async function executeConfirmedProductionAction(args: {
     if (!payload?.node) {
       throw new ApiError(400, "CONFIRMED_ACTION_PAYLOAD_INCOMPLETE", "确认连接选择缺少节点数据，请重新生成确认卡。");
     }
-    const projectId = payload?.projectId ?? args.sessionId;
+    const projectId = payload?.projectId ?? args.bookId;
+    if (!projectId) throw new ApiError(400, "INVALID_ID", "interactive-film action requires a project id (bookId)");
     tool = createConnectChoiceTool(args.root, projectId);
     params = {
       node: payload.node,
@@ -955,7 +958,8 @@ async function executeConfirmedProductionAction(args: {
     if (!payload?.nodeId) {
       throw new ApiError(400, "CONFIRMED_ACTION_PAYLOAD_INCOMPLETE", "确认删除节点缺少 nodeId，请重新生成确认卡。");
     }
-    const projectId = payload?.projectId ?? args.sessionId;
+    const projectId = payload?.projectId ?? args.bookId;
+    if (!projectId) throw new ApiError(400, "INVALID_ID", "interactive-film action requires a project id (bookId)");
     tool = createRemoveNodeTool(args.root, projectId);
     params = {
       nodeId: payload.nodeId,
@@ -3635,6 +3639,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             pipeline,
             root,
             sessionId: bookSession.sessionId,
+            bookId: agentBookId,
             streamSessionId,
             instruction,
             requestedIntent,
