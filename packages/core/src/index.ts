@@ -541,3 +541,37 @@ export {
   extractJson,
   type GenerateStoryGraphInput,
 } from "./interactive-film/generate.js";
+export {
+  WorldAnchorSchema,
+  CharacterSchema,
+  VoiceProfileSchema,
+  type WorldAnchor,
+  type Character,
+  type VoiceProfile,
+} from "./interactive-film/graph-schema.js";
+export {
+  StoryGraphDeltaSchema,
+  applyStoryGraphDelta,
+  type StoryGraphDelta,
+} from "./interactive-film/delta.js";
+export {
+  applyGraphDelta,
+  loadAuthoringState,
+  revertToSnapshot,
+  authoringStatePath,
+  type AuthoringState,
+} from "./interactive-film/authoring-store.js";
+export {
+  buildWorldAnchorDelta,
+  buildAddVariableDelta,
+  buildDefineEndingDelta,
+  buildRemoveNodeDelta,
+  buildConnectChoiceDelta,
+  buildUpsertCharactersDelta,
+} from "./interactive-film/authoring-tools.js";
+export { writeCharacterFacts, readCharacterVoices } from "./interactive-film/memory-link.js";
+export {
+  buildFillNodeDeltaFromLLMText,
+  buildStructureDeltaFromLLMText,
+} from "./interactive-film/authoring-generate.js";
+export { summarizeStoryGraph, buildFilmAuthoringContext } from "./interactive-film/film-context.js";

@@ -44,7 +44,7 @@ describe("applyEffects", () => {
 
 describe("visibleChoices", () => {
   const node: StoryNode = {
-    id: "n1", title: "", type: "branch", sceneDesc: "", dialogue: [],
+    id: "n1", title: "", type: "branch", sceneDesc: "", dialogue: [], act: "",
     choices: [
       { id: "a", text: "always", targetNodeId: "x", effects: [] },
       { id: "b", text: "gated", targetNodeId: "y", effects: [], condition: { var: "trust", op: ">=", value: 3 } },
