@@ -161,9 +161,10 @@ export function reviewStoryGraph(graph: StoryGraph): ValidationReport {
   }
   const edgeReachable = computeEdgeReachable(graph);
 
-  // GATED_UNREACHABLE: edge-reachable but not runtime-reachable
+  // GATED_UNREACHABLE: edge-reachable but not runtime-reachable (endings are reported by ENDING_UNREACHABLE)
   for (const node of graph.nodes) {
     if (node.type === "start") continue;
+    if (node.type === "ending") continue;
     if (edgeReachable.has(node.id) && !reachedNodeIds.has(node.id)) {
       issues.push({
         code: "GATED_UNREACHABLE",
@@ -198,11 +199,11 @@ export function reviewStoryGraph(graph: StoryGraph): ValidationReport {
     });
   }
 
-  // ISOLATED_NODE
+  // ISOLATED_NODE (endings are reported by ENDING_UNREACHABLE, not as generic isolated nodes)
   const incoming = new Set<string>();
   for (const n of graph.nodes) for (const c of n.choices) incoming.add(c.targetNodeId);
   for (const node of graph.nodes) {
-    if (node.type !== "start" && !incoming.has(node.id)) {
+    if (node.type !== "start" && node.type !== "ending" && !incoming.has(node.id)) {
       issues.push({
         code: "ISOLATED_NODE",
         level: "info",
