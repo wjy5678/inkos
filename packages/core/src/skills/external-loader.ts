@@ -1,5 +1,6 @@
 import { readFile, readdir, stat } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { homedir } from "node:os";
+import { delimiter, isAbsolute, join } from "node:path";
 import yaml from "js-yaml";
 import {
   CapabilitySkillManifestSchema,
@@ -18,6 +19,12 @@ export interface ExternalSkillDiagnostic {
 export interface LoadExternalCapabilitySkillsResult {
   readonly skills: ReadonlyArray<CapabilitySkillManifest>;
   readonly diagnostics: ReadonlyArray<ExternalSkillDiagnostic>;
+}
+
+export interface LoadConfiguredCapabilitySkillsInput {
+  readonly projectRoot: string;
+  readonly env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+  readonly userRoot?: string;
 }
 
 export async function loadExternalCapabilitySkills(
@@ -40,6 +47,56 @@ export async function loadExternalCapabilitySkills(
   }
 
   return { skills, diagnostics };
+}
+
+export async function loadConfiguredCapabilitySkills(
+  input: LoadConfiguredCapabilitySkillsInput,
+): Promise<LoadExternalCapabilitySkillsResult> {
+  const candidates = configuredSkillDirs(input);
+  const skills: CapabilitySkillManifest[] = [];
+  const diagnostics: ExternalSkillDiagnostic[] = [];
+
+  for (const candidate of candidates) {
+    try {
+      const result = await loadExternalCapabilitySkills({ externalDirs: [candidate.path] });
+      skills.push(...result.skills);
+      diagnostics.push(...result.diagnostics);
+    } catch (error) {
+      if (!candidate.explicit && isMissingPathError(error)) continue;
+      diagnostics.push({
+        path: candidate.path,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { skills, diagnostics };
+}
+
+interface ConfiguredSkillDir {
+  readonly path: string;
+  readonly explicit: boolean;
+}
+
+function configuredSkillDirs(input: LoadConfiguredCapabilitySkillsInput): ConfiguredSkillDir[] {
+  const env = input.env ?? process.env;
+  const envDirs = (env.INKOS_SKILL_DIRS ?? "")
+    .split(delimiter)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const userRoot = input.userRoot ?? join(homedir(), ".inkos");
+  return [
+    { path: join(input.projectRoot, ".inkos", "skills"), explicit: false },
+    { path: join(userRoot, "skills"), explicit: false },
+    ...envDirs.map((path) => ({ path, explicit: true })),
+  ];
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: unknown }).code === "ENOENT";
 }
 
 async function discoverSkillDirs(externalDirs: ReadonlyArray<string>): Promise<string[]> {

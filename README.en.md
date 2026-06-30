@@ -93,6 +93,38 @@ This routes through the same conversation executor used by the project TUI, so O
 
 Atomic commands (`plan chapter` / `compose chapter` / `draft` / `audit` / `revise` / `write next`) are still available, but they are now lower-level tools rather than the preferred OpenClaw entry. You can also browse it on [ClawHub](https://clawhub.ai) by searching `inkos`.
 
+### InkOS Runtime Skills
+
+Runtime skills are professional capability packs used by InkOS Chat / Play / long-form writing. They are not the same thing as the ClawHub skill above. A runtime skill provides domain guidance, context needs, and prompt packs; it does not grant extra execution authority. Creating, writing, editing, and image generation still go through Studio tools and confirmation gates.
+
+How to use them:
+
+- Put `SKILL.md` files under `.inkos/skills/<skill-id>/` in a project. Studio Chat loads them at runtime.
+- Or set `INKOS_SKILL_DIRS=/abs/path/to/skills`; the path may point to one skill directory or a directory containing multiple skill subdirectories. Use the platform path delimiter for multiple paths.
+- Force one for a turn with `@skill-id`, for example: `@detective-play create an evidence-chain open world`.
+- Without `@skill-id`, InkOS can auto-select built-in skills from the session kind and trigger phrases, such as long-form writing, open-world play, or interactive film authoring.
+
+Minimal `SKILL.md`:
+
+```md
+---
+id: detective-play
+name: Detective Play
+description: Detective evidence and suspect-board play.
+whenToUse: Use for open-world detective play and evidence ledgers.
+triggers: [detective, evidence]
+sessionKinds: [play]
+contextNeeds:
+  - id: evidence-ledger
+    purpose: Preserve suspect, clue, and evidence chain state.
+    sources: [world/evidence.md]
+    tier: protected
+    appliesTo: [play_step]
+    retrieval: semantic
+---
+Use evidence chains; do not turn clues into generic atmosphere.
+```
+
 ### Configure
 
 InkOS now separates two configuration paths: **Studio uses visual service settings**, while **CLI / daemon / deployment can still use env overrides**. They do not silently overwrite each other.

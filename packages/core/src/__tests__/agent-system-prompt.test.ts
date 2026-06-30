@@ -96,6 +96,32 @@ describe("buildAgentSystemPrompt", () => {
       expect(prompt).toContain("它不授予执行权限");
       expect(prompt).toContain("play.start");
     });
+
+    it("includes the selected skill body as active guidance", () => {
+      const skills = createSkillRegistry({
+        skills: [{
+          id: "detective-play",
+          name: "Detective Play",
+          description: "Detective evidence play.",
+          whenToUse: "Use for detective evidence chains.",
+          triggers: ["侦探"],
+          sessionKinds: ["play"],
+          promptPacks: [],
+          toolHints: [],
+          contextNeeds: [],
+          body: "Evidence must form a recoverable chain; never turn clues into generic atmosphere.",
+          source: "external",
+        }],
+      }).resolveSkills({
+        requestedSkills: ["detective-play"],
+        sessionKind: "chat",
+      });
+
+      const prompt = buildAgentSystemPrompt(null, "en", "chat", { skills });
+
+      expect(prompt).toContain("detective-play (forced)");
+      expect(prompt).toContain("Evidence must form a recoverable chain");
+    });
   });
 
   describe("book-create mode", () => {

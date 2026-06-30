@@ -65,10 +65,16 @@ ${commonOutputRules(false)}`;
 
 function appendSkillGuidance(prompt: string, isZh: boolean, skills: SkillResolutionResult | undefined): string {
   if (!skills || skills.usedSkills.length === 0) return prompt;
-  const skillLines = skills.usedSkills.map((skill) => {
+  const skillLines = skills.usedSkills.flatMap((skill) => {
     const prefix = skills.forcedSkillIds.includes(skill.id) ? (isZh ? "强制" : "forced") : (isZh ? "自动" : "auto");
     const packs = skill.promptPacks.length > 0 ? `; promptPacks=${skill.promptPacks.join(", ")}` : "";
-    return `- ${skill.id} (${prefix}): ${skill.whenToUse}${packs}`;
+    const line = `- ${skill.id} (${prefix}): ${skill.whenToUse}${packs}`;
+    const body = skill.body.trim();
+    if (!body) return [line];
+    return [
+      line,
+      isZh ? `  领域规则：\n${indentSkillBody(body, "  ")}` : `  Domain guidance:\n${indentSkillBody(body, "  ")}`,
+    ];
   });
   const unavailable = skills.missingSkillIds.length > 0
     ? (isZh
@@ -100,6 +106,13 @@ function appendSkillGuidance(prompt: string, isZh: boolean, skills: SkillResolut
         disabled.trim(),
       ].filter(Boolean).join("\n");
   return `${prompt}\n\n${guidance}`;
+}
+
+function indentSkillBody(body: string, prefix: string): string {
+  return body
+    .split(/\r?\n/)
+    .map((line) => `${prefix}${line}`)
+    .join("\n");
 }
 
 function buildBookCreatePrompt(isZh: boolean, confirmed: boolean): string {

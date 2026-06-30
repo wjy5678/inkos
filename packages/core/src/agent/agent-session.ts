@@ -52,7 +52,7 @@ import type { TranscriptEvent, TranscriptRole } from "../interaction/session-tra
 import type { PlayMode, SessionKind } from "../interaction/session.js";
 import type { ActionPayload, ActionSource, RequestedIntent } from "../interaction/action-envelope.js";
 import type { ContextCompressionCallback } from "../models/context-compression.js";
-import { createSkillRegistry } from "../skills/index.js";
+import { createSkillRegistry, loadConfiguredCapabilitySkills } from "../skills/index.js";
 import { assertSafeBookId } from "../utils/book-id.js";
 import { PlayStore } from "../play/play-store.js";
 import { isLlmStubEnabled, stubAgentStream } from "./llm-stub.js";
@@ -209,13 +209,25 @@ function actionPayloadCacheKey(payload: ActionPayload | undefined): string {
 }
 
 function skillResolutionCacheKey(value: {
-  readonly usedSkills: ReadonlyArray<{ readonly id: string }>;
+  readonly usedSkills: ReadonlyArray<{
+    readonly id: string;
+    readonly source?: string;
+    readonly whenToUse?: string;
+    readonly promptPacks?: ReadonlyArray<string>;
+    readonly body?: string;
+  }>;
   readonly forcedSkillIds: ReadonlyArray<string>;
   readonly missingSkillIds: ReadonlyArray<string>;
   readonly disabledSkillIds: ReadonlyArray<string>;
 }): string {
   return JSON.stringify({
-    used: value.usedSkills.map((skill) => skill.id),
+    used: value.usedSkills.map((skill) => ({
+      id: skill.id,
+      source: skill.source,
+      whenToUse: skill.whenToUse,
+      promptPacks: skill.promptPacks ?? [],
+      body: skill.body ?? "",
+    })),
     forced: value.forcedSkillIds,
     missing: value.missingSkillIds,
     disabled: value.disabledSkillIds,
@@ -808,7 +820,8 @@ async function runAgentSessionUnlocked(
   const requestedIntent = config.requestedIntent;
   const actionPayload = config.actionPayload;
   const actionPayloadKey = actionPayloadCacheKey(actionPayload);
-  const skillResolution = createSkillRegistry().resolveSkills({
+  const configuredSkills = await loadConfiguredCapabilitySkills({ projectRoot });
+  const skillResolution = createSkillRegistry({ skills: configuredSkills.skills }).resolveSkills({
     requestedSkills: config.requestedSkills,
     disabledSkills: config.disabledSkills,
     sessionKind,

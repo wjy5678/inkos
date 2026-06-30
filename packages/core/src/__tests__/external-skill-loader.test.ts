@@ -1,9 +1,10 @@
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { delimiter, join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createSkillRegistry,
+  loadConfiguredCapabilitySkills,
   loadExternalCapabilitySkills,
 } from "../skills/index.js";
 
@@ -105,5 +106,68 @@ describe("external skill loader", () => {
   it("rejects relative external directories", async () => {
     await expect(loadExternalCapabilitySkills({ externalDirs: [relative(process.cwd(), root)] }))
       .rejects.toThrow(/absolute/);
+  });
+
+  it("loads project-local skills from .inkos/skills without explicit configuration", async () => {
+    const skillDir = join(root, ".inkos", "skills", "detective-play");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      join(skillDir, "SKILL.md"),
+      [
+        "---",
+        "id: detective-play",
+        "name: Detective Play",
+        "description: Detective evidence play.",
+        "whenToUse: Use for detective play.",
+        "triggers: [侦探]",
+        "sessionKinds: [play]",
+        "---",
+        "Preserve evidence chains.",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const loaded = await loadConfiguredCapabilitySkills({
+      projectRoot: root,
+      env: {},
+      userRoot: join(root, "missing-user-root"),
+    });
+
+    expect(loaded.diagnostics).toEqual([]);
+    expect(loaded.skills.map((skill) => skill.id)).toContain("detective-play");
+  });
+
+  it("loads external skills from INKOS_SKILL_DIRS and reports bad paths without throwing", async () => {
+    const externalRoot = join(root, "external-skills");
+    const skillDir = join(externalRoot, "romance-play");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      join(skillDir, "SKILL.md"),
+      [
+        "---",
+        "id: romance-play",
+        "name: Romance Play",
+        "description: Romance interaction skill.",
+        "whenToUse: Use for romance play.",
+        "triggers: [恋爱]",
+        "sessionKinds: [play]",
+        "---",
+        "Keep emotional continuity.",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const loaded = await loadConfiguredCapabilitySkills({
+      projectRoot: join(root, "project"),
+      userRoot: join(root, "user"),
+      env: {
+        INKOS_SKILL_DIRS: [externalRoot, join(root, "does-not-exist")].join(delimiter),
+      },
+    });
+    const registry = createSkillRegistry({ skills: loaded.skills });
+
+    expect(loaded.skills.map((skill) => skill.id)).toContain("romance-play");
+    expect(loaded.diagnostics.some((diagnostic) => diagnostic.path.includes("does-not-exist"))).toBe(true);
+    expect(registry.resolveSkills({ requestedSkills: ["romance-play"] }).forcedSkillIds).toEqual(["romance-play"]);
   });
 });

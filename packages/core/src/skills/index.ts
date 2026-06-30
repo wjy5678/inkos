@@ -8,8 +8,10 @@ export {
   type SkillContextPlanInput,
 } from "./context-planner.js";
 export {
+  loadConfiguredCapabilitySkills,
   loadExternalCapabilitySkills,
   type ExternalSkillDiagnostic,
+  type LoadConfiguredCapabilitySkillsInput,
   type LoadExternalCapabilitySkillsInput,
   type LoadExternalCapabilitySkillsResult,
 } from "./external-loader.js";

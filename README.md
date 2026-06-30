@@ -103,6 +103,38 @@ inkos interact --json --message "继续当前书，但把节奏再收紧一点"
 
 `plan chapter` / `compose chapter` / `draft` / `audit` / `revise` / `write next` 这些原子命令仍然保留，但更适合作为底层工具，而不是 OpenClaw 的首选入口。也可以在 [ClawHub](https://clawhub.ai) 搜索 `inkos` 在线查看。
 
+### InkOS 运行时 Skill
+
+这里的 skill 指 InkOS Chat/Play/长篇写作内部可使用的专业能力包，和上面的 ClawHub Skill 不是同一个概念。它不会给模型额外执行权限，只提供专业规则、上下文需求和 prompt pack；创建、写入、编辑、生成图片仍然走 Studio 的工具权限和确认闸门。
+
+可用方式：
+
+- 在项目目录放置 `.inkos/skills/<skill-id>/SKILL.md`，Studio Chat 会在运行时自动加载。
+- 或设置 `INKOS_SKILL_DIRS=/abs/path/to/skills`，可指向单个 skill 目录，也可指向包含多个 skill 子目录的目录。多个目录按系统分隔符分隔。
+- 在 Chat 里用 `@skill-id` 强制本轮使用，例如：`@detective-play 做一个证据链驱动的开放世界`。
+- 不写 `@skill-id` 时，系统会根据 session 类型和触发词自动选择内置 skill，例如长篇、开放世界、互动影游。
+
+最小 `SKILL.md` 示例：
+
+```md
+---
+id: detective-play
+name: Detective Play
+description: Detective evidence and suspect-board play.
+whenToUse: Use for open-world detective play and evidence ledgers.
+triggers: [侦探, evidence]
+sessionKinds: [play]
+contextNeeds:
+  - id: evidence-ledger
+    purpose: Preserve suspect, clue, and evidence chain state.
+    sources: [world/evidence.md]
+    tier: protected
+    appliesTo: [play_step]
+    retrieval: semantic
+---
+Use evidence chains; do not turn clues into generic atmosphere.
+```
+
 ### 配置
 
 当前 InkOS 将 LLM 配置分成两条清晰路径：**Studio 用可视化服务配置**，**CLI / daemon / 部署环境支持 env 覆盖**。两者不会互相污染。
