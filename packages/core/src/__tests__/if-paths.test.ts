@@ -55,6 +55,23 @@ describe("enumerateRuntimePaths", () => {
     expect(paths.length).toBeLessThanOrEqual(50);
   });
 
+  it("allows state-changing loops to unlock later choices", () => {
+    const graph = g({
+      variables: [{ name: "clue", type: "counter", default: 0, desc: "" }],
+      nodes: [
+        { id: "s", type: "start", choices: [
+          { id: "search", text: "继续搜证", targetNodeId: "s", effects: [{ var: "clue", op: "add", value: 1 }] },
+          { id: "solve", text: "摊牌", targetNodeId: "e", condition: { var: "clue", op: ">=", value: 2 } },
+        ] },
+        { id: "e", type: "ending", choices: [] },
+      ],
+      endings: [{ id: "truth", nodeId: "e", title: "真相", type: "good" }],
+    });
+    const { paths, truncated } = enumerateRuntimePaths(graph, { maxPaths: 20 });
+    expect(truncated).toBe(true);
+    expect(paths.some((p) => p.endingId === "truth" && p.nodeIds.filter((id) => id === "s").length >= 3)).toBe(true);
+  });
+
   it("sets truncated=true and returns exactly 1 path when maxPaths=1 and graph has 2 reachable endings", () => {
     const graph = g({
       nodes: [

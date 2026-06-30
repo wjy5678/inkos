@@ -1,5 +1,5 @@
 import { writeFile, mkdir } from "node:fs/promises";
-import { join, dirname, relative, isAbsolute } from "node:path";
+import { join, dirname, relative, isAbsolute, sep } from "node:path";
 import { generateImageFromPrompt, resolveCoverGenerationRequest } from "../pipeline/short-fiction-runner.js";
 import type { StoryNode } from "./graph-schema.js";
 import type { StoryGraphDelta } from "./delta.js";
@@ -8,9 +8,20 @@ export interface NodeImageDeps {
   generateImage(prompt: string, size: string): Promise<{ buffer: Buffer; extension: "png" | "jpg" }>;
 }
 
+function safeAssetSegment(value: string): string {
+  const encoded = encodeURIComponent(value).replace(/[!'()*]/g, (ch) =>
+    `%${ch.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return encoded || "node";
+}
+
+function escapesBase(rel: string): boolean {
+  return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+}
+
 /** posix-style relative path served by GET /api/v1/project/files/<this> */
 export function nodeImageRelPath(projectId: string, nodeId: string, ext: string): string {
-  return `interactive-films/${projectId}/assets/nodes/${nodeId}.${ext}`;
+  return `interactive-films/${projectId}/assets/nodes/${safeAssetSegment(nodeId)}.${ext}`;
 }
 
 export function buildSetImageRefDelta(node: StoryNode, prompt: string, assetRef: string): StoryGraphDelta {
@@ -33,7 +44,12 @@ export async function generateNodeImage(params: {
   const assetRef = nodeImageRelPath(params.projectId, params.node.id, extension);
   const abs = join(params.projectRoot, assetRef);
   const rel = relative(params.projectRoot, abs);
-  if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
+  if (!rel || escapesBase(rel)) {
+    throw new Error(`unsafe node id for image path: ${params.node.id}`);
+  }
+  const assetDir = join(params.projectRoot, "interactive-films", params.projectId, "assets", "nodes");
+  const relToAssetDir = relative(assetDir, abs);
+  if (!relToAssetDir || escapesBase(relToAssetDir)) {
     throw new Error(`unsafe node id for image path: ${params.node.id}`);
   }
   await mkdir(dirname(abs), { recursive: true });

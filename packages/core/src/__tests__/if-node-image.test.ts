@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { generateNodeImage, buildSetImageRefDelta, nodeImageRelPath, type NodeImageDeps } from "../interactive-film/node-image.js";
 import { StoryNodeSchema } from "../interactive-film/graph-schema.js";
 import { StoryGraphDeltaSchema } from "../interactive-film/delta.js";
@@ -36,18 +36,21 @@ describe("generateNodeImage", () => {
     await expect(generateNodeImage({ projectRoot: root, projectId: "p", node, deps: stub })).rejects.toThrow();
   });
 
-  it("rejects a node id containing path-traversal segments that escape projectRoot", async () => {
-    // The nodeId is embedded at depth 4: interactive-films/<projectId>/assets/nodes/<nodeId>.png
-    // Five leading ".." segments step out of all four prefix dirs plus projectRoot itself.
+  it("encodes node ids containing path-traversal segments", async () => {
     const maliciousId = "../../../../../escape";
     const node = StoryNodeSchema.parse({ id: maliciousId, type: "start", sceneDesc: "x", choices: [] });
-    await expect(
-      generateNodeImage({ projectRoot: root, projectId: "p", node, deps: stub })
-    ).rejects.toThrow(/unsafe/i);
-    // Verify no file was written outside root (parent of the tmp dir should not
-    // contain escape.png — the guard must throw before any write occurs)
-    const escapedPath = join(dirname(root), "escape.png");
-    await expect(access(escapedPath)).rejects.toThrow();
+    const { assetRef } = await generateNodeImage({ projectRoot: root, projectId: "p", node, deps: stub });
+    expect(assetRef).toBe("interactive-films/p/assets/nodes/..%2F..%2F..%2F..%2F..%2Fescape.png");
+    expect(await readFile(join(root, assetRef))).toEqual(PNG);
+  });
+
+  it("stores images for slash-containing node ids under the node asset directory", async () => {
+    const node = StoryNodeSchema.parse({ id: "../../leak", type: "start", sceneDesc: "x", choices: [] });
+    const { assetRef } = await generateNodeImage({ projectRoot: root, projectId: "p", node, deps: stub });
+    expect(assetRef).toMatch(/^interactive-films\/p\/assets\/nodes\//);
+    expect(assetRef).not.toContain("../");
+    expect(await readFile(join(root, assetRef))).toEqual(PNG);
+    await expect(access(join(root, "interactive-films", "p", "assets", "leak.png"))).rejects.toThrow();
   });
 
   it("buildSetImageRefDelta produces a node upsert preserving other fields", () => {

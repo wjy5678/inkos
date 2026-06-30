@@ -121,6 +121,11 @@ const PIPELINE_STAGES: Record<string, string[]> = {
   auditor: ["审计章节"],
 };
 
+function attachmentDisposition(fileName: string): string {
+  const safeAscii = fileName.replace(/[^A-Za-z0-9._-]+/g, "_") || "download";
+  return `attachment; filename="${safeAscii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}
+
 const AGENT_LABELS: Record<string, string> = {
   architect: "建书", writer: "写作", auditor: "审计",
   reviser: "修订", exporter: "导出",
@@ -5260,7 +5265,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     return new Response(JSON.stringify(graph, null, 2), {
       headers: {
         "Content-Type": "application/json; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${id}.story-graph.json"`,
+        "Content-Disposition": attachmentDisposition(`${id}.story-graph.json`),
       },
     });
   });
@@ -5273,7 +5278,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     return new Response(exportInk(graph), {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${id}.ink"`,
+        "Content-Disposition": attachmentDisposition(`${id}.ink`),
       },
     });
   });
@@ -5298,7 +5303,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     return new Response(buildPlayableHtml(graph, { assetDataUris }), {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${id}.html"`,
+        "Content-Disposition": attachmentDisposition(`${id}.html`),
       },
     });
   });

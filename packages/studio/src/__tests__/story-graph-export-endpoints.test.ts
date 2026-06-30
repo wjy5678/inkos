@@ -47,6 +47,27 @@ describe("export endpoints", () => {
     expect(html).toContain("<!doctype html>");
     expect(html).toMatch(/data:image\/png;base64,/); // image inlined
   });
+  it("exports projects with non-ascii ids without invalid response headers", async () => {
+    const id = "测试项目";
+    const dir = join(root, "interactive-films", id, "assets", "nodes");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "s.png"), PNG);
+    await saveStoryGraph(root, id, StoryGraphSchema.parse({
+      schemaVersion: 1, projectId: id, title: "中文项目", variables: [],
+      nodes: [
+        { id: "s", type: "start", title: "开场", imageSlot: { prompt: "x", assetRef: `interactive-films/${id}/assets/nodes/s.png` }, choices: [{ id: "c", text: "go", targetNodeId: "e" }] },
+        { id: "e", type: "ending", title: "结局", choices: [] },
+      ],
+      endings: [{ id: "g1", nodeId: "e", title: "好", type: "good" }],
+    }));
+
+    const app = createStudioServer({} as never, root);
+    for (const fmt of ["json", "ink", "html"] as const) {
+      const res = await app.request(`/api/v1/projects/${encodeURIComponent(id)}/export/${fmt}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-disposition")).toContain("attachment");
+    }
+  });
   it("404 no graph, 400 unsafe id", async () => {
     const app = createStudioServer({} as never, root);
     expect((await app.request("/api/v1/projects/nope/export/json")).status).toBe(404);

@@ -29,9 +29,10 @@ interface ExportBarProps {
 export function ExportBar({ projectId, theme }: ExportBarProps) {
   const c = useColors(theme);
 
-  const jsonUrl = buildApiUrl(`/projects/${projectId}/export/json`) ?? "#";
-  const inkUrl = buildApiUrl(`/projects/${projectId}/export/ink`) ?? "#";
-  const htmlUrl = buildApiUrl(`/projects/${projectId}/export/html`) ?? "#";
+  const encodedProjectId = encodeURIComponent(projectId);
+  const jsonUrl = buildApiUrl(`/projects/${encodedProjectId}/export/json`) ?? "#";
+  const inkUrl = buildApiUrl(`/projects/${encodedProjectId}/export/ink`) ?? "#";
+  const htmlUrl = buildApiUrl(`/projects/${encodedProjectId}/export/html`) ?? "#";
 
   return (
     <div className="border border-border bg-card rounded p-3" data-testid="export-bar">

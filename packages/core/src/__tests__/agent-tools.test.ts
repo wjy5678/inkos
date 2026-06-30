@@ -379,6 +379,32 @@ describe("agent deterministic writing tools", () => {
     });
   });
 
+  it("drops non-positive placeholder counts from interactive-film confirmation payloads", async () => {
+    const tool = createProposeActionTool("zh");
+
+    const result = await tool.execute("proposal-interactive-film-zero-count", {
+      action: "interactive_film_create",
+      instruction: "做一个多结局互动影游。",
+      interactiveFilmCreate: {
+        title: "第七阅览室",
+        requirements: "多分支，变量记录，至少两个结局。",
+        episodeCount: 0,
+      },
+    });
+
+    expect(result.details).toMatchObject({
+      kind: "proposed_action",
+      action: "interactive_film_create",
+      actionPayload: {
+        interactiveFilmCreate: {
+          title: "第七阅览室",
+          requirements: "多分支，变量记录，至少两个结局。",
+        },
+      },
+    });
+    expect(JSON.stringify(result.details)).not.toContain("episodeCount");
+  });
+
   it("falls back to the tool argument when confirmed play payload contains a truncated initial scene", async () => {
     let seededScene = "";
     const pipeline = {

@@ -334,6 +334,10 @@ function compactObject<T extends Record<string, unknown>>(value: T | undefined):
       if (items.length > 0) out[key] = items;
       continue;
     }
+    if (typeof raw === "number") {
+      if (Number.isFinite(raw) && raw > 0) out[key] = raw;
+      continue;
+    }
     if (raw !== undefined && raw !== null) {
       out[key] = raw;
     }
